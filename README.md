@@ -24,8 +24,8 @@ TODO
     - `features.py`, `constants.py`
 - `data/`: handle synthetic data generation, file i/o, downloading training data
 - `model/`: SVM model and data scaler handling
+    - `modifier.py`: source code to implement ovito modifier 
 - `train/`: scripts to help train for new classes (defaults are: BCC, FCC, HCP, HD, CD, SC)
-- `modifier.py`: source code to implement ovito modifier 
 
 `examples/`: will feature example usages of dc3
 
