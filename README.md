@@ -1,4 +1,4 @@
-# DataCentricCrystalClassifier (DC^3)
+# DataCentricCrystalClassifier (DC<sup>3</sup>)
 
 ## Setup
 
@@ -16,7 +16,7 @@ TODO
 
 ## Components
 
-(file structure liable to change)
+*(file structure liable to change)*
 
 `dc3/`: crystal classifier package
 
