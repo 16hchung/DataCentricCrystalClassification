@@ -12,9 +12,7 @@ from scipy.stats import norm as sp_norm
 from . import constants as C
 
 class SteinhardtNelsonConfig:
-  def __init__(self, max_neigh=C.MAX_NEIGH,
-                     max_1st_shell=C.MAX_1ST_SHELL
-                     n_ls=C.STEIN_NUM_lS):
+  def __init__(self, n_ls=C.STEIN_NUM_lS):
     self.n_ls = n_ls
 
 
