@@ -4,9 +4,10 @@ import numpy.random
 import numpy.linalg
 import itertools
 
+from ovito.data import NearestNeighborFinder, CutoffNeighborFinder
 # TODO consider pyshtools?
 from scipy.special import sph_harm
-from ovito.data import NearestNeighborFinder, CutoffNeighborFinder
+from scipy.stats import norm as sp_norm
 
 from . import constants as C
 
@@ -38,10 +39,9 @@ class FeatureComputer: # TODO make more accessible from higher level dir
 
   @staticmethod
   def _check_n_neighs(n_neighs):
-    prev_r_min, prev_r_max = 0, 9
-    for r in n_neighs:
-      r_min, r_max = min(r), max(r)
-      assert prev_r_min < r_min < prev_r_max < r_max
+    prev_start, prev_end = 0, 9
+    for start, end in n_neighs:
+      assert prev_start < start < prev_end < end
 
   @property
   def max_neigh(self):
@@ -56,8 +56,7 @@ class FeatureComputer: # TODO make more accessible from higher level dir
     R_cart = self._get_deltas(ov_data_collection)
     Q = self.compute_steinhardt(ov_data_collection, R_cart=R_cart)
     G = self.compute_rsf(ov_data_collection, R_cart=R_cart)
-    # TODO concat
-    raise NotImplementedError
+    return np.concatenate((Q,G), axis=1)
 
   def compute_steinhardt(self, ov_data_collection, R_cart=None):
     '''
@@ -102,17 +101,54 @@ class FeatureComputer: # TODO make more accessible from higher level dir
     return Q # shape: (n_atoms, n_features --dflt 150)
 
   def compute_rsf(ov_data_collection, R_cart=R_cart):
+    '''
+    TODO documentation
+    '''
     max_neigh    = self.max_neigh
     n_neighs     = self.n_neighs
     n_rsf_per_mu = self.rsf_config.n_rsf_per_mu
     mu_step      = self.rsf_config.mu_step
     sigma_scale  = self.rsf_config.sigma_scale
-    
+   
+    import pdb;pdb.set_trace()
     if not isinstance(R_cart, np.array):
       R_cart = self._get_deltas(ov_data_collection) # shape: (n_atoms, max_neigh, 3)
     n_atoms = len(R)
+    # convert to from xyz to magnitude
+    R = np.linalg.norm(R_cart, axis=2) # shape: (n_atoms, max_neigh)
+    # used for generating mus centered around main mus, eg if n_rsf_per_mu is 5, 
+    #   want range to be -2, -1, 0, 1, 2
+    mu_incr_range = range(int(n_rsf_per_mu / -2),
+                          int(n_rsf_per_mu / 2) + 1)
+    # calculate mus and sigmas
+    Mu_list = []
+    Sigma_list = []
+    for start, end in n_neighs:
+      Mu_center = np.mean(R[start:end], axis=-1) # appended shape: (n_atoms)
+      Sigma_list.append(sigma_scale * Mu_center)
+      # generate a bunch of mus centered around this one
+      center_Mu_list = []
+      for mu_incr in mu_incr_range:
+        scaled_incr = mu_incr * mu_step
+        center_Mu_list.append(Mu_center + scaled_incr * Mu_center)
+      Mu_list.append( np.stack(center_Mu_list, axis=-1) ) # shape: (n_atoms, n_rsf_per_mu)
+    # stack mulist and sigma list
+    Mus    = np.stack(Mu_list,    axis=1)  # shape: (n_atoms, len(n_neighs),  n_rsf_per_mu)
+    Sigmas = np.stack(Sigma_list, axis=-1) # shape: (n_atoms, len(n_neighs))
 
-    raise NotImplementedError
+    # use maximual r_cut with some buffer
+    r_cut = np.max(Mus) + 4*np.max(Sigms)
+    # retrieve distances for each
+    # shapes: (n_atoms, max neigh w/in cutoff per atom)
+    distances = self._get_variable_neigh_distances(ov_data_collection, r_cut)
+    # NOTE: expanding dims in arrays so they can be broadcast together in norm.pdf
+    # shape: (n_atoms, len(n_neighs), n_rsf_per_mu, max neigh w/in cutoff per atom)
+    soft_counts = sp_norm.pdf(distances[:, np.newaxis, np.newaxis, :],
+                              loc=Mus[:, :, :, np.newaxis],
+                              scale=Sigmas[:, :, np.newaxis, np.newaxis])
+    G_stacked = np.sum(soft_counts, axis=-1) # (n_atoms, len(n_neighs), n_rsf_per_mu)
+    G = np.reshape(G_stacked, (n_atoms, len(n_neighs)*n_rsf_per_mu), order='C')
+    return G
 
   def _get_deltas(self, ov_data_collection):
     n_atoms = ov_data_collection.particles.count
@@ -126,3 +162,21 @@ class FeatureComputer: # TODO make more accessible from higher level dir
     ]
     R_cart = np.array(R_list)
     return R_cart
+
+  def _get_variable_neigh_distances(self, ov_data_collection, r_cut, pad=np.inf):
+    n_atoms = ov_data_collection.particles.count
+
+    finder = CutoffNeighborFinder(cutoff=r_cut,
+                                  data_collection=ov_data_collection)
+    # retrieve neighbor distances from ovito finder (all elements may
+    # be different lengths, shape: list len = n_atoms, each el len = ?
+    distances_list = [
+        finder.neighbor_distances(iatom) for iatom in tqdm(range(n_atoms))
+    ]
+    max_len = max([len(l) for l in distances_list])
+    padded_list = [
+        np.pad(l, (0, max_len - len(l)), mode='constant', constant_values=pad)
+        for l in distances_list
+    ]
+    distances = np.stack(padded_list, axis=0) # shape: (n_atoms, max_len)
+    return distances

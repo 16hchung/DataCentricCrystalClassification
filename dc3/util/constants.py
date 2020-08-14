@@ -7,10 +7,10 @@ from .util import range_list_max
 ### FEATURE COMPUTATION
 
 DFLT_N_NEIGHS = [
-    range(6),
-    range(8),
-    range(12),
-    range(4,16)
+    (0,6),
+    (0,8),
+    (0,12),
+    (4,16)
 ]
 MAX_NEIGH = range_list_max(DFLT_N_NEIGHS)
 
