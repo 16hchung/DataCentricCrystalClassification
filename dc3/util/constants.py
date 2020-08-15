@@ -2,29 +2,33 @@ from pathlib import Path
 from collections import namedtuple
 import numpy as np
 
-from .util import range_list_max
+from .util import Lattice, range_list_max, n_neighs_from_lattices
 
-### FILEPATHS
+### FILE I/O
 
 CFG_RT = Path('config')
-PERF_OV_RT = CFG_RT / 'ovito_perf'
+EVAL_INPT_RT = Path('eval') # TODO make subpaths for benchmarks.csv, val_data
+PERF_DUMP_RT = CFG_RT / 'perf_dump'
+
+DFLT_OUTPUT_RT = Path('default_pipeline')
 
 OUTPUT_RT = Path('output')
 TRAIN_RT = OUTPUT_RT  / 'training'
 SYNTHETIC_RT = OUTPUT_RT / 'synth_features'
 PERF_FEAT_RT = OUTPUT_RT / 'perf_features'
 
+OV_OUTPUT_FMT = 'lammps/dump'
+OV_CART_COLS = ['Position.X', 'Position.Y', 'Position.Z']
 
 ### TRAINING
 
-Lattice = namedtuple('Lattice', ['name', 'perfect_path', 'neigh_range'])
 DFLT_LATTICES = [
-  Lattice(name='fcc', perfect_path=Path(TODO), neigh_range=(0,12)),
-  Lattice(name='bcc', perfect_path=Path(TODO), neigh_range=(0,12)),
-  Lattice(name='hcp', perfect_path=Path(TODO), neigh_range=(0,8) ),
-  Lattice(name='cd' , perfect_path=Path(TODO), neigh_range=(0,16)),
-  Lattice(name='hd' , perfect_path=Path(TODO), neigh_range=(0,16)),
-  Lattice(name='sc' , perfect_path=Path(TODO), neigh_range=(0,6) )
+  Lattice(name='fcc', perfect_path=PERF_DUMP_RT/'dump_fcc_perfect_0.dat', neigh_range=(0,12)),
+  Lattice(name='bcc', perfect_path=PERF_DUMP_RT/'dump_bcc_perfect_0.dat', neigh_range=(0,12)),
+  Lattice(name='hcp', perfect_path=PERF_DUMP_RT/'dump_hcp_perfect_0.dat', neigh_range=(0,8) ),
+  Lattice(name='cd' , perfect_path=PERF_DUMP_RT/'dump_cd_perfect_0.dat' , neigh_range=(0,16)),
+  Lattice(name='hd' , perfect_path=PERF_DUMP_RT/'dump_hd_perfect_0.dat' , neigh_range=(0,16)),
+  Lattice(name='sc' , perfect_path=PERF_DUMP_RT/'dump_sc_perfect_0.dat' , neigh_range=(0,6) )
 ]
 
 DFLT_DISTORT_BINS = list(np.linspace(.01, .35, num=15))
@@ -32,8 +36,7 @@ DFLT_DISTORT_BINS = list(np.linspace(.01, .35, num=15))
 # Feature computation
 
 # TODO vvv maybe don't need this
-DFLT_N_NEIGHS = list(set([l.neigh_range for l in DFLT_LATTICES]))
-DFLT_N_NEIGHS.sort()
+DFLT_N_NEIGHS = n_neighs_from_lattices(DFLT_LATTICES)
 
 MAX_NEIGH = range_list_max(DFLT_N_NEIGHS)
 

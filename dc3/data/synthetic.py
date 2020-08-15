@@ -1,4 +1,5 @@
 from copy import deepcopy
+from pathlib import Path
 import numpy as np
 import numpy.random
 import numpy.linalg
@@ -12,13 +13,14 @@ from ..util.features import FeatureComputer
 def distort_perfect(perfect_ovfile,
                     distort_bins=C.DFLT_DISTORT_BINS,
                     save_path=None):
+  perfect_ovfile = str(perfect_ovfile)
   # First get first_neigh_d which we'll use to determine displacement sampling
   pipeline = import_file(perfect_ovfile)
   perf_data = pipeline.compute()
   n_atoms = perf_data.particles.count
 
   finder = NearestNeighborFinder(1, perf_data)
-  first_neigh_d = min([finder.find(i)[0].distance for i in range(n_atoms)])
+  first_neigh_d = min([next(finder.find(i)).distance for i in range(n_atoms)])
 
   # Include each bin as a separate "frame" in ovito pipeline (typically
   # used to handle time evolution)
@@ -26,7 +28,7 @@ def distort_perfect(perfect_ovfile,
   def pipeline_add_offsets(i_frame, data):
     distort_scale = distort_bins[i_frame]
 
-    positions = daata.particles_.positions
+    positions = data.particles_.positions
     n_total_points = positions[:].shape[0]
     # generate unit vectors in random directions
     displacements = np.random.randn(3, n_total_points).T
@@ -39,15 +41,16 @@ def distort_perfect(perfect_ovfile,
     displacements = displacements / norms * mags
     data.particles_.positions_ += displacements
 
-  pipeline.modifiers.append(pipeline_add_offsets)
+  dup_pipeline.modifiers.append(pipeline_add_offsets)
   ov_collections = [
-    pipeline.compute(i) for i in range(pipeline.source.num_frames)
+    dup_pipeline.compute(i) for i in range(dup_pipeline.source.num_frames)
   ]
+  if save_path:
+    for i, ov_collection in enumerate(ov_collections):
+      save_fname = f'distorted_{distort_bins[i]}.dump'
+      full_save_path = save_path / save_fname
+      export_file(ov_collection,
+                  str(full_save_path),
+                  C.OV_OUTPUT_FMT,
+                  columns=C.OV_CART_COLS)
   return ov_collections
-
-def train_features_from_distorted(distorted_collections,
-                                  save_path,
-                                  feature_computer=FeatureComputer()):
-  # TODO maybe also take feature calculator as arg?
-  assert save_path
-  raise NotImplementedError # returns  np array
