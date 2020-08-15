@@ -10,6 +10,7 @@ from ..util import constants as C
 from ..util.util import n_neighs_from_lattices
 from ..util.features import SteinhardtNelsonConfig, RSFConfig, FeatureComputer
 from ..data.synthetic import distort_perfect
+from .outlier_detector import OutlierDetector
 
 class DC3Pipeline:
   def __init__(self, lattices=C.DFLT_LATTICES,
@@ -19,6 +20,7 @@ class DC3Pipeline:
                      overwrite=False,
                      scaler=StandardScaler(),
                      classifier=SVC(**C.DFLT_CLF_KWARGS),
+                     outlier_detector=OutlierDetector(),
                      output_rt=C.DFLT_OUTPUT_RT): # TODO implement model saving
     self.overwrite = overwrite
     self._make_paths(output_rt)
@@ -34,7 +36,7 @@ class DC3Pipeline:
 
     # TODO vvv MAYBE TAKE AS ARG? (esp for hyperparams?)
     self.scaler           = StandardScaler()
-    self.outlier_detector = None
+    self.outlier_detector = outlier_detector
     self.classifier       = classifier
 
   @staticmethod
@@ -85,7 +87,10 @@ class DC3Pipeline:
     np.save(self.synth_lbls_path, y)
     return X, y
 
-  def fit(self, X, y):
+  def compute_perf_features(self):
+    raise NotImplementedError
+
+  def fit(self, X, y, perf_xs):
     self.weights_path.mkdir(exist_ok=self.overwrite)
     X, y = shuffle(X, y)
     # fit scaler to training data
@@ -95,22 +100,26 @@ class DC3Pipeline:
     # train classifier
     self.classifier.fit(X, y)
     # TODO add hparam grid searching
-
     # train outlier detector
-    raise NotImplementedError
+    self.outlier_detector.fit(X, y, perf_xs)
+    return self
 
   def fit_end2end(self, **kwargs):
     if not self.overwrite and self.synth_feat_path and self.synth_lbls_path:
       X = np.load(self.synth_feat_path)
       y = np.load(self.synth_lbls_path)
+      perf_xs = self.compute_perf_features()
     else:
       X, y = self.compute_synth_features(**kwargs)
+      perf_xs = self.compute_perf_features()
 
     import pdb;pdb.set_trace()
     if not self.overwrite and False:
       raise NotImplementedError # TODO load cached models
     else:
-      self.fit(X, y)
+      self.fit(X, y, perf_xs)
+
+    return self
 
   def predict(self, ov_data_collection):
     raise NotImplementedError

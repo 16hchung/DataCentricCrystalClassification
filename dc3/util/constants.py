@@ -51,4 +51,4 @@ DFLT_CLF_KWARGS = {'C': 10,
                    'cache_size': 1000,
                    'class_weight': 'balanced'}
 
-DFLT_OUTLIER_PCUT = 90
+DFLT_OUTLIER_PCUT = 95
