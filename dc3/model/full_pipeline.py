@@ -14,8 +14,7 @@ from .outlier_detector import OutlierDetector
 
 class DC3Pipeline:
   def __init__(self, lattices=C.DFLT_LATTICES,
-                     stein_config=SteinhardtNelsonConfig(),
-                     rsf_config=RSFConfig(),
+                     feature_computer=feature_computer,
                      overwrite=False,
                      scaler=StandardScaler(),
                      classifier=SVC(**C.DFLT_CLF_KWARGS),
@@ -25,21 +24,15 @@ class DC3Pipeline:
     self._make_paths(output_rt)
     
     # TODO include config cache
-    self.lattices     = lattices
-    self.n_neighs     = n_neighs_from_lattices(lattices)
-    self.stein_config = stein_config
-    self.rsf_config   = rsf_config # TODO maybe don't need
-    self.feature_computer = FeatureComputer(self.n_neighs,
-                                            self.stein_config,
-                                            self.rsf_config)
-
-    # TODO vvv MAYBE TAKE AS ARG? (esp for hyperparams?)
-    self.scaler           = StandardScaler()
+    self.lattices         = lattices
+    self.feature_computer = feature_computer
+    self.scaler           = scaler
     self.outlier_detector = outlier_detector
     self.classifier       = classifier
 
   @staticmethod
   def from_pipeline_rt(output_rt=C.DFLT_OUTPUT_RT):
+    import pdb;pdb.set_trace()
     raise NotImplementedError
 
   def _make_paths(self, output_rt):
