@@ -16,7 +16,6 @@ class DC3Pipeline:
   def __init__(self, lattices=C.DFLT_LATTICES,
                      stein_config=SteinhardtNelsonConfig(),
                      rsf_config=RSFConfig(),
-                     from_ckpt=None,
                      overwrite=False,
                      scaler=StandardScaler(),
                      classifier=SVC(**C.DFLT_CLF_KWARGS),
@@ -54,9 +53,11 @@ class DC3Pipeline:
     self.synth_dump_path = self.train_rt / 'dump'
     self.synth_feat_path = self.train_rt / 'synth_features.npy'
     self.synth_lbls_path = self.train_rt / 'synth_labels.npy'
-    self.perf_feat_path  = self.train_rt / 'perfect_features.csv'
+    self.perf_feat_path  = self.train_rt / 'perfect_features.npz'
     self.weights_path    = self.train_rt / 'weights'
-    self.scaler_path     = self.weights_path / 'scaler.pkl'
+    self.scaler_path     = self.weights_path / 'scaler.joblib'
+    self.classifier_path = self.weights_path / 'svc.joblib'
+    self.outlier_path    = self.weights_path / 'outlier_detector.pkl'
     # inference-related paths
     self.inf_rt = output_rt / 'inference'
     # evaluation-related output
@@ -66,7 +67,7 @@ class DC3Pipeline:
     self.synth_dump_path.mkdir(exist_ok=self.overwrite)
     # get synthetic training data
     Xs, ys = [], []
-    for label, latt in enumerate(lattices):
+    for label, latt in enumerate(self.lattices):
       print(latt)
       # get distorted cartesian coords
       latt_dump_path = self.synth_dump_path / latt.name
@@ -88,41 +89,61 @@ class DC3Pipeline:
     return X, y
 
   def compute_perf_features(self):
-    raise NotImplementedError
+    perf_xs = []
+    for lbl, latt in enumerate(self.lattices):
+      perf_x = self.feature_computer.compute_perf_from_dump(latt.perfect_path)
+      perf_xs.append(perf_x)
+    np.savez(self.perf_feat_path, *perf_xs)
+    return perf_xs
+
+  def load_perf_features(self):
+    npzfile = np.load(self.perf_feat_path)
+    perf_xs = [npzfile[key] for key in npzfile.files]
+    return perf_xs
 
   def fit(self, X, y, perf_xs):
     self.weights_path.mkdir(exist_ok=self.overwrite)
-    X, y = shuffle(X, y)
     # fit scaler to training data
     self.scaler.fit(X)
     joblib.dump(self.scaler, self.scaler_path)
-    X = self.scaler.transformer(X)
+    X = self.scaler.transform(X)
     # train classifier
-    self.classifier.fit(X, y)
+    X, y = shuffle(X, y)
+    X_train, y_train = X[:50000,:], y[:50000]
+    self.classifier.fit(X_train, y_train)
+    joblib.dump(self.classifier, self.classifier_path)
     # TODO add hparam grid searching
     # train outlier detector
+    perf_xs = [np.array(x) for x in self.scaler.transform(perf_xs).tolist()]
     self.outlier_detector.fit(X, y, perf_xs)
+    self.outlier_detector.save(self.outlier_path)
     return self
 
   def fit_end2end(self, **kwargs):
-    if not self.overwrite and self.synth_feat_path and self.synth_lbls_path:
+    if not self.overwrite and self.synth_feat_path.exists() \
+                          and self.synth_lbls_path.exists():
       X = np.load(self.synth_feat_path)
       y = np.load(self.synth_lbls_path)
-      perf_xs = self.compute_perf_features()
     else:
       X, y = self.compute_synth_features(**kwargs)
+
+    if not self.overwrite and self.perf_feat_path.exists():
+      perf_xs = self.load_perf_features()
+    else:
       perf_xs = self.compute_perf_features()
 
-    import pdb;pdb.set_trace()
     if not self.overwrite and False:
       raise NotImplementedError # TODO load cached models
     else:
       self.fit(X, y, perf_xs)
-
     return self
 
   def predict(self, ov_data_collection):
-    raise NotImplementedError
+    X = self.feature_computer.compute(ov_data_collection)
+    X = self.scaler.transform(X)
+    y_cand = self.classifier.predict(X)
+    y = self.outlier_detector(X, y_cand)
+    return y
 
   def eval(self, ov_data_collection, labels):
     raise NotImplementedError

@@ -1,9 +1,11 @@
 from tqdm import tqdm
+import pandas as pd
 import numpy as np
 import numpy.random
 import numpy.linalg
 import itertools
 
+from ovito.io import import_file
 from ovito.data import NearestNeighborFinder, CutoffNeighborFinder
 # TODO consider pyshtools?
 from scipy.special import sph_harm
@@ -58,6 +60,17 @@ class FeatureComputer: # TODO make more accessible from higher level dir
     Q = self.compute_steinhardt(ov_data_collection, R_cart=R_cart)
     G = self.compute_rsf(ov_data_collection, R_cart=R_cart)
     return np.concatenate((Q,G), axis=1)
+
+  def compute_perf_from_dump(self, dump_path):
+    ov_data_collection = import_file(str(dump_path)).compute()
+    X_all = self.compute(ov_data_collection)
+    # turn into dataframe to use pd functionality to find most common x
+    df = pd.DataFrame(X_all)
+    perf_x = ( df.round(decimals=C.FEATURE_PRECISION)
+                 .groupby(list(df.columns)) # find unique feature vectors
+                 .size().sort_values()      # sort counts for unique vctors
+                 .index.tolist()[-1] )      # only grab most common x
+    return np.array(perf_x)
 
   def compute_steinhardt(self, ov_data_collection, R_cart=None):
     '''

@@ -43,12 +43,15 @@ N_RSF_PER_MU = 7
 RSF_MU_STEP = .05
 RSF_SIGMA_SCALE = .05
 
+FEATURE_PRECISION = 11
+
 # Classifier
 DFLT_CLF_KWARGS = {'C': 10,
                    'gamma': .01,
                    'max_iter': 1e5,
                    'tol': 1e-3,
                    'cache_size': 1000,
-                   'class_weight': 'balanced'}
+                   'class_weight': 'balanced',
+                   'verbose': 2}
 
 DFLT_OUTLIER_PCUT = 95
