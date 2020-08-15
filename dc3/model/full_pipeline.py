@@ -1,4 +1,5 @@
 from tqdm import tqdm
+from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 from pathlib import Path
@@ -16,6 +17,8 @@ class DC3Pipeline:
                      rsf_config=RSFConfig(),
                      from_ckpt=None,
                      overwrite=False,
+                     scaler=StandardScaler(),
+                     classifier=SVC(**C.DFLT_CLF_KWARGS),
                      output_rt=C.DFLT_OUTPUT_RT): # TODO implement model saving
     self.overwrite = overwrite
     self._make_paths(output_rt)
@@ -32,7 +35,7 @@ class DC3Pipeline:
     # TODO vvv MAYBE TAKE AS ARG? (esp for hyperparams?)
     self.scaler           = StandardScaler()
     self.outlier_detector = None
-    self.classifier       = None
+    self.classifier       = classifier
 
   @staticmethod
   def from_pipeline_rt(output_rt=C.DFLT_OUTPUT_RT):
@@ -84,11 +87,13 @@ class DC3Pipeline:
 
   def fit(self, X, y):
     self.weights_path.mkdir(exist_ok=self.overwrite)
+    X, y = shuffle(X, y)
     # fit scaler to training data
     self.scaler.fit(X)
     joblib.dump(self.scaler, self.scaler_path)
     X = self.scaler.transformer(X)
     # train classifier
+    self.classifier.fit(X, y)
     # TODO add hparam grid searching
 
     # train outlier detector
@@ -101,11 +106,11 @@ class DC3Pipeline:
     else:
       X, y = self.compute_synth_features(**kwargs)
 
+    import pdb;pdb.set_trace()
     if not self.overwrite and False:
       raise NotImplementedError # TODO load cached models
     else:
       self.fit(X, y)
-
 
   def predict(self, ov_data_collection):
     raise NotImplementedError

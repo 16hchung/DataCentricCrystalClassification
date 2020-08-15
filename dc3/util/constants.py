@@ -1,3 +1,4 @@
+from sklearn.svm import SVC
 from pathlib import Path
 from collections import namedtuple
 import numpy as np
@@ -11,11 +12,6 @@ EVAL_INPT_RT = Path('eval') # TODO make subpaths for benchmarks.csv, val_data
 PERF_DUMP_RT = CFG_RT / 'perf_dump'
 
 DFLT_OUTPUT_RT = Path('default_pipeline')
-
-OUTPUT_RT = Path('output')
-TRAIN_RT = OUTPUT_RT  / 'training'
-SYNTHETIC_RT = OUTPUT_RT / 'synth_features'
-PERF_FEAT_RT = OUTPUT_RT / 'perf_features'
 
 OV_OUTPUT_FMT = 'lammps/dump'
 OV_CART_COLS = ['Position.X', 'Position.Y', 'Position.Z']
@@ -46,3 +42,13 @@ STEIN_NUM_lS = 10
 N_RSF_PER_MU = 7
 RSF_MU_STEP = .05
 RSF_SIGMA_SCALE = .05
+
+# Classifier
+DFLT_CLF_KWARGS = {'C': 10,
+                   'gamma': .01,
+                   'max_iter': 1e5,
+                   'tol': 1e-3,
+                   'cache_size': 1000,
+                   'class_weight': 'balanced'}
+
+DFLT_OUTLIER_PCUT = 90
