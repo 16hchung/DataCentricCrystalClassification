@@ -4,36 +4,55 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 from pathlib import Path
 import numpy as np
+import warnings
 import joblib
 
 from ..util import constants as C
 from ..util.util import n_neighs_from_lattices
-from ..util.features import SteinhardtNelsonConfig, RSFConfig, FeatureComputer
+from ..util.features import Featurizer
 from ..data.synthetic import distort_perfect
 from .outlier_detector import OutlierDetector
 
 class DC3Pipeline:
   def __init__(self, lattices=C.DFLT_LATTICES,
-                     feature_computer=feature_computer,
-                     overwrite=False,
-                     scaler=StandardScaler(),
+                     featurizer=Featurizer(),
                      classifier=SVC(**C.DFLT_CLF_KWARGS),
                      outlier_detector=OutlierDetector(),
-                     output_rt=C.DFLT_OUTPUT_RT): # TODO implement model saving
-    self.overwrite = overwrite
+                     output_rt=C.DFLT_OUTPUT_RT,
+                     overwrite=False):
     self._make_paths(output_rt)
     
     # TODO include config cache
-    self.lattices         = lattices
-    self.feature_computer = feature_computer
-    self.scaler           = scaler
-    self.outlier_detector = outlier_detector
-    self.classifier       = classifier
-
-  @staticmethod
-  def from_pipeline_rt(output_rt=C.DFLT_OUTPUT_RT):
-    import pdb;pdb.set_trace()
-    raise NotImplementedError
+    if self.cfg_path.exists() and not overwrite:
+      self.featurizer = Featurizer.from_saved_path(self.cfg_path)
+      self.lattices   = self.featurizer.lattices
+      assert not lattices or self.lattices == lattices
+      assert not featurizer or self.featurizer.__dict__ == featurizer.__dict__
+    else:
+      assert isinstance(lattices, list) and isinstance(featurizer, Featurizer)
+      self.lattices         = lattices
+      self.featurizer       = featurizer
+      self.featurizer.save(self.cfg_path)
+    
+    if self.scaler_path.exists() and self.outlier_path.exists() \
+                                 and self.classifier_path.exists() \
+                                 and not overwrite:
+      if classifier != None or outlier_detector != None:
+        warnings.warn(
+          'Using cached models. ' + 
+          'Ignoring classifier and outlier_detector passed into DC3Pipeline constructor'
+        )
+      self.scaler = joblib.load(self.scaler_path)
+      self.classifier = joblib.load(self.classifier_path)
+      self.outlier_detector = OutlierDetector.from_saved_path(self.outlier_path)
+      self.is_trained = True
+    else:
+      assert isinstance(outlier_detector, OutlierDetector) and \
+             isinstance(classifier, SVC)
+      self.scaler           = StandardScaler()
+      self.outlier_detector = outlier_detector
+      self.classifier       = classifier
+      self.is_trained = False
 
   def _make_paths(self, output_rt):
     output_rt = Path(output_rt)
@@ -42,7 +61,7 @@ class DC3Pipeline:
     self.cfg_path = output_rt / 'config.json'
     # train-related paths
     self.train_rt = output_rt / 'train'
-    self.train_rt.mkdir(exist_ok=True) # TODO incorporate self.overwrite
+    self.train_rt.mkdir(exist_ok=True)
     self.synth_dump_path = self.train_rt / 'dump'
     self.synth_feat_path = self.train_rt / 'synth_features.npy'
     self.synth_lbls_path = self.train_rt / 'synth_labels.npy'
@@ -56,19 +75,20 @@ class DC3Pipeline:
     # evaluation-related output
     self.eval_rt = output_rt / 'eval'
 
-  def compute_synth_features(self, distort_bins=C.DFLT_DISTORT_BINS):
-    self.synth_dump_path.mkdir(exist_ok=self.overwrite)
+  def compute_synth_features(self, distort_bins=C.DFLT_DISTORT_BINS,
+                                   overwrite=False):
+    self.synth_dump_path.mkdir(exist_ok=overwrite)
     # get synthetic training data
     Xs, ys = [], []
     for label, latt in enumerate(self.lattices):
       print(latt)
       # get distorted cartesian coords
       latt_dump_path = self.synth_dump_path / latt.name
-      latt_dump_path.mkdir(exist_ok=self.overwrite)
+      latt_dump_path.mkdir(exist_ok=overwrite)
       ov_collections = distort_perfect(latt.perfect_path,
                                        distort_bins=distort_bins,
                                        save_path=latt_dump_path)
-      X_latt_list = [self.feature_computer.compute(ov_collection)
+      X_latt_list = [self.featurizer.compute(ov_collection)
                      for ov_collection in tqdm(ov_collections)]
       X_latt = np.concatenate(X_latt_list, axis=0)
       y_latt = np.array( [float(label)] * len(X_latt) )
@@ -84,7 +104,7 @@ class DC3Pipeline:
   def compute_perf_features(self):
     perf_xs = []
     for lbl, latt in enumerate(self.lattices):
-      perf_x = self.feature_computer.compute_perf_from_dump(latt.perfect_path)
+      perf_x = self.featurizer.compute_perf_from_dump(latt.perfect_path)
       perf_xs.append(perf_x)
     np.savez(self.perf_feat_path, *perf_xs)
     return perf_xs
@@ -94,8 +114,8 @@ class DC3Pipeline:
     perf_xs = [npzfile[key] for key in npzfile.files]
     return perf_xs
 
-  def fit(self, X, y, perf_xs):
-    self.weights_path.mkdir(exist_ok=self.overwrite)
+  def fit(self, X, y, perf_xs, overwrite=False):
+    self.weights_path.mkdir(exist_ok=overwrite)
     # fit scaler to training data
     self.scaler.fit(X)
     joblib.dump(self.scaler, self.scaler_path)
@@ -110,29 +130,30 @@ class DC3Pipeline:
     perf_xs = [np.array(x) for x in self.scaler.transform(perf_xs).tolist()]
     self.outlier_detector.fit(X, y, perf_xs)
     self.outlier_detector.save(self.outlier_path)
+    self.is_trained = False
     return self
 
-  def fit_end2end(self, **kwargs):
-    if not self.overwrite and self.synth_feat_path.exists() \
+  def fit_end2end(self, distort_bins=C.DFLT_DISTORT_BINS,
+                        overwrite=False):
+    if not overwrite and self.synth_feat_path.exists() \
                           and self.synth_lbls_path.exists():
       X = np.load(self.synth_feat_path)
       y = np.load(self.synth_lbls_path)
     else:
-      X, y = self.compute_synth_features(**kwargs)
-
-    if not self.overwrite and self.perf_feat_path.exists():
+      X, y = self.compute_synth_features(distort_bins=distort_bins)
+    if not overwrite and self.perf_feat_path.exists():
       perf_xs = self.load_perf_features()
     else:
       perf_xs = self.compute_perf_features()
 
-    if not self.overwrite and False:
+    if not overwrite and False:
       raise NotImplementedError # TODO load cached models
     else:
       self.fit(X, y, perf_xs)
     return self
 
   def predict(self, ov_data_collection):
-    X = self.feature_computer.compute(ov_data_collection)
+    X = self.featurizer.compute(ov_data_collection)
     X = self.scaler.transform(X)
     y_cand = self.classifier.predict(X)
     y = self.outlier_detector(X, y_cand)

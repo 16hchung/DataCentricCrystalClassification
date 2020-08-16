@@ -10,6 +10,6 @@ def range_list_max(range_list):
   return max([end for start, end in range_list])
 
 def n_neighs_from_lattices(lattices):
-  n_neighs = list(set([l.neigh_range for l in lattices]))
+  n_neighs = list(set([tuple(l.neigh_range) for l in lattices]))
   n_neighs.sort()
   return n_neighs

@@ -1,9 +1,13 @@
+from copy import deepcopy
+from inspect import signature
 from tqdm import tqdm
+import pickle as pk
 import pandas as pd
 import numpy as np
 import numpy.random
 import numpy.linalg
 import itertools
+import json
 
 from ovito.io import import_file
 from ovito.data import NearestNeighborFinder, CutoffNeighborFinder
@@ -12,31 +16,38 @@ from scipy.special import sph_harm
 from scipy.stats import norm as sp_norm
 
 from . import constants as C
-from .util import range_list_max
+from .util import Lattice, range_list_max, n_neighs_from_lattices
 
-class SteinhardtNelsonConfig:
-  def __init__(self, n_ls=C.STEIN_NUM_lS):
-    self.n_ls = n_ls
-
-
-class RSFConfig:
-  def __init__(self, n_rsf_per_mu=C.N_RSF_PER_MU,
-                     mu_step=C.RSF_MU_STEP,
-                     sigma_scale=C.RSF_SIGMA_SCALE):
-    self.n_rsf_per_mu = n_rsf_per_mu
-    self.mu_step      = mu_step
-    self.sigma_scale  = sigma_scale
-
-
-class FeatureComputer: # TODO make more accessible from higher level dir
+class Featurizer: # TODO make more accessible from higher level dir
   ''' Computes features from an ovito DataCollection '''
-  def __init__(self, n_neighs=C.DFLT_N_NEIGHS,
-                     stein_config=SteinhardtNelsonConfig(),
-                     rsf_config=RSFConfig()):
-    self._check_n_neighs(n_neighs)
-    self.n_neighs     = n_neighs
-    self.stein_config = stein_config
-    self.rsf_config   = rsf_config
+  def __init__(self, lattices=C.DFLT_LATTICES,
+                     steinhardt_n_ls=C.STEIN_NUM_lS,
+                     n_rsf_per_mu=C.N_RSF_PER_MU,
+                     rsf_mu_step=C.RSF_MU_STEP,
+                     rsf_sigma_scale=C.RSF_SIGMA_SCALE):
+    # add args automatically as instance variables
+    kwargs = locals()
+    self.__dict__.update(kwargs)
+    del self.__dict__['self']
+
+    # check that n_neighs are fine
+    self.n_neighs = n_neighs_from_lattices(lattices)
+    self._check_n_neighs(self.n_neighs)
+    self.max_neigh = range_list_max(self.n_neighs)
+
+  def save(self, save_path):
+    init_args = [p for p in signature(self.__init__).parameters]
+    save_args = { k:v for k,v in self.__dict__.items() if k in init_args }
+    with open(str(save_path), 'w') as f:
+      json.dump(save_args, f)
+
+  @classmethod
+  def from_saved_path(cls, save_path):
+    with open(str(save_path)) as f:
+      kwargs = json.load(f)
+    lattices = [Lattice(*l_args) for l_args in kwargs['lattices']]
+    kwargs['lattices'] = lattices
+    return cls(**kwargs)
 
   @staticmethod
   def _check_n_neighs(n_neighs):
@@ -45,15 +56,6 @@ class FeatureComputer: # TODO make more accessible from higher level dir
       assert (prev_start == prev_end == None) or \
              (prev_start <= start < prev_end < end)
       prev_start, prev_end = start, end
-
-  @property
-  def max_neigh(self):
-    return self._max_neigh
-
-  def __getattr__(self, attr):
-    if attr == '_max_neigh':
-      self._max_neigh = range_list_max(self.n_neighs)
-      return self._max_neigh
 
   def compute(self, ov_data_collection):
     R_cart = self._get_deltas(ov_data_collection)
@@ -77,7 +79,7 @@ class FeatureComputer: # TODO make more accessible from higher level dir
     TODO documentation
     '''
     max_neigh = self.max_neigh
-    n_ls      = self.stein_config.n_ls
+    n_ls      = self.steinhardt_n_ls
   
     if not isinstance(R_cart, np.ndarray):
       # shape: (n_atoms, max_neigh, 3)
@@ -118,9 +120,9 @@ class FeatureComputer: # TODO make more accessible from higher level dir
     '''
     max_neigh    = self.max_neigh
     n_neighs     = self.n_neighs
-    n_rsf_per_mu = self.rsf_config.n_rsf_per_mu
-    mu_step      = self.rsf_config.mu_step
-    sigma_scale  = self.rsf_config.sigma_scale
+    n_rsf_per_mu = self.n_rsf_per_mu
+    mu_step      = self.rsf_mu_step
+    sigma_scale  = self.rsf_sigma_scale
    
     if not isinstance(R_cart, np.ndarray):
       # shape: (n_atoms, max_neigh, 3)

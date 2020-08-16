@@ -8,7 +8,7 @@ from ovito.io import import_file, export_file
 from ovito.data import NearestNeighborFinder
 
 from ..util import constants as C
-from ..util.features import FeatureComputer
+from ..util.features import Featurizer
 
 def distort_perfect(perfect_ovfile,
                     distort_bins=C.DFLT_DISTORT_BINS,
