@@ -137,7 +137,7 @@ class DC3Pipeline:
     perf_xs = [np.array(x) for x in self.scaler.transform(perf_xs).tolist()]
     self.outlier_detector.fit(X, y, perf_xs)
     self.outlier_detector.save(self.outlier_path)
-    self.is_trained = False
+    self.is_trained = True
     return self
 
   def fit_end2end(self, distort_bins=C.DFLT_DISTORT_BINS,
