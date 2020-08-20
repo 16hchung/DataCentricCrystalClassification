@@ -12,3 +12,5 @@ __pycache__/**
 default_pipeline/**
 benchmarking/**
 sbatch-able.sh
+
+!config/**
