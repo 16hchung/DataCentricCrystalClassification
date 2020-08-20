@@ -21,8 +21,10 @@ class DC3Pipeline:
                      output_rt=C.DFLT_OUTPUT_RT,
                      overwrite=False):
     self._make_paths(output_rt)
+    self._init_config_and_featurizer(lattices, featurizer, overwrite)
+    self._init_models(classifier, outlier_detector, overwrite)
     
-    # TODO include config cache
+  def _init_config_and_featurizer(self, lattices, featurizer, overwrite):
     if self.cfg_path.exists() and not overwrite:
       self.featurizer = Featurizer.from_saved_path(self.cfg_path)
       self.lattices   = self.featurizer.lattices
@@ -33,7 +35,9 @@ class DC3Pipeline:
       self.lattices         = lattices
       self.featurizer       = featurizer
       self.featurizer.save(self.cfg_path)
+    self.name_to_lbl_latt = {l.name: (i,l) for i,l in enumerate(self.lattices)}
     
+  def _init_models(self, classifier, outlier_detector, overwrite):
     if self.scaler_path.exists() and self.outlier_path.exists() \
                                  and self.classifier_path.exists() \
                                  and not overwrite:
@@ -71,7 +75,7 @@ class DC3Pipeline:
     self.classifier_path = self.weights_path / 'svc.joblib'
     self.outlier_path    = self.weights_path / 'outlier_detector.pkl'
     # inference-related paths
-    self.inf_rt = output_rt / 'inference'
+    self.inference_rt = output_rt / 'inference'
     # evaluation-related output
     self.eval_rt = output_rt / 'eval'
 
@@ -153,11 +157,13 @@ class DC3Pipeline:
     return self
 
   def predict(self, ov_data_collection):
+    return self.predict_return_features(ov_data_collection)[1]
+
+  def predict_return_features(self, ov_data_collection):
+    assert self.is_trained
     X = self.featurizer.compute(ov_data_collection)
     X = self.scaler.transform(X)
     y_cand = self.classifier.predict(X)
-    y = self.outlier_detector(X, y_cand)
-    return y
+    y = self.outlier_detector.predict(X, y_cand)
+    return X, y
 
-  def eval(self, ov_data_collection, labels):
-    raise NotImplementedError

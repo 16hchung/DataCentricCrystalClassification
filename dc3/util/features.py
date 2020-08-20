@@ -39,6 +39,8 @@ class Featurizer: # TODO make more accessible from higher level dir
     init_args = [p for p in signature(self.__init__).parameters]
     save_args = { k:v for k,v in self.__dict__.items() if k in init_args }
     with open(str(save_path), 'w') as f:
+      # TODO: look int using custom json serializer
+      # https://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
       json.dump(save_args, f)
 
   @classmethod
@@ -173,7 +175,8 @@ class Featurizer: # TODO make more accessible from higher level dir
 
     # generate R_cart: matrix of deltas to neighbors in cartesion coords
     #           shape: (n_atoms, max_neigh, 3)
-    finder = NearestNeighborFinder(self._max_neigh, ov_data_collection)
+    # TODO find non-ovito version of this
+    finder = NearestNeighborFinder(self.max_neigh, ov_data_collection)
     R_list = [
       [neigh.delta for neigh in finder.find(iatom)]
       for iatom in range(n_atoms)

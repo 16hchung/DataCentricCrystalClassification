@@ -8,10 +8,13 @@ from .util import Lattice, range_list_max, n_neighs_from_lattices
 ### FILE I/O
 
 CFG_RT = Path('config')
-EVAL_INPT_RT = Path('eval') # TODO make subpaths for benchmarks.csv, val_data
 PERF_DUMP_RT = CFG_RT / 'perf_dump'
 
 DFLT_OUTPUT_RT = Path('default_pipeline')
+CACHE_RT = Path('.dc3_cache')
+EVAL_CACHE_RT = CACHE_RT / 'eval'
+EVAL_CACHE_X = EVAL_CACHE_RT / 'X.npy'
+EVAL_CACHE_y = EVAL_CACHE_RT / 'y.npy'
 
 OV_OUTPUT_FMT = 'lammps/dump'
 OV_CART_COLS = ['Position.X', 'Position.Y', 'Position.Z']

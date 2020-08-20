@@ -33,7 +33,6 @@ class OutlierDetector:
       y_latt = y[y==lbl]
       if not len(y_latt): continue
       X_latt = X[y==lbl][:]
-      import pdb;pdb.set_trace() # may need to check dims
       # find distances to this lattice's perfect features and det if below cutoff
       D = self._distance(X_latt, perf_x)
       y_latt[D > cutoff] = self.outlier_lbl
