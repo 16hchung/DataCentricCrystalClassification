@@ -7,10 +7,13 @@ import numpy as np
 import warnings
 import joblib
 
+from ovito.io import import_file, export_file
+
 from ..util import constants as C
 from ..util.util import n_neighs_from_lattices
 from ..util.features import Featurizer
 from ..data.synthetic import distort_perfect
+from ..data.file_io import recursive_in_out_file_pairs
 from .outlier_detector import OutlierDetector
 
 class DC3Pipeline:
@@ -167,3 +170,16 @@ class DC3Pipeline:
     y = self.outlier_detector.predict(X, y_cand)
     return X, y
 
+  def predict_recursive_dir(self, input_dir, output_name, ext='.gz'):
+    output_dir = self.inference_rt / output_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for in_path, out_path in tqdm(recursive_in_out_file_pairs(input_dir,
+                                                              output_dir,
+                                                              ext=ext)):
+      ov_data = import_file(in_path).compute()
+      y = self.predict(ov_data)
+      ov_data.particles_.create_property('Lattice', data=y)
+      export_file(ov_data,
+                  out_path,
+                  'lammps/dump',
+                  columns=['Position.X', 'Position.Y', 'Position.Z', 'Lattice'])

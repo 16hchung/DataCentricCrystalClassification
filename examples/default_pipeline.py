@@ -1,8 +1,11 @@
+'''
+Script to train our default pipeline, evaluate/reproduce our figures, and run
+inference on your own simulation output files
+'''
+
 from pathlib import Path
 from tqdm import tqdm
 import fire
-
-from ovito.io import import_file, export_file
 
 from dc3.model.full_pipeline import DC3Pipeline
 from dc3.util import constants as C
@@ -33,18 +36,7 @@ def eval(metadata_path, results_path, pipeline_name='dc3', overwrite=False):
 
 def inference(input_dir, output_name):
   pipeline = DC3Pipeline()
-  output_dir = pipeline.inference_rt / output_name
-  output_dir.mkdir(parents=True, exist_ok=True)
-  for in_path, out_path in tqdm(recursive_in_out_file_pairs(input_dir,
-                                                            output_dir,
-                                                            ext='.gz')):
-    ov_data = import_file(in_path).compute()
-    y = pipeline.predict(ov_data)
-    ov_data.particles_.create_property('Lattice', data=y)
-    export_file(ov_data,
-                out_path,
-                'lammps/dump',
-                columns=['Position.X', 'Position.Y', 'Position.Z', 'Lattice'])
+  pipeline.predict_recursive_dir(input_dir, output_name, ext='.gz')
 
 # TODO prioritize non-scripting version (ovito UI version)
 
