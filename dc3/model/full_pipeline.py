@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import warnings
 import joblib
+import gc
 
 from ovito.io import import_file, export_file
 
@@ -183,3 +184,4 @@ class DC3Pipeline:
                   out_path,
                   'lammps/dump',
                   columns=['Position.X', 'Position.Y', 'Position.Z', 'Lattice'])
+      gc.collect()

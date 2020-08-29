@@ -14,6 +14,16 @@ TODO
 
 TODO
 
+### Ovito modifier
+
+TODO make this prettier...
+unzip pretrained model and make sure it's in `<path>`
+```
+from dc3.model.modifier import DC3Modifier
+# add modifier to pipeline
+```
+
+
 ## Components
 
 *(file structure liable to change)*

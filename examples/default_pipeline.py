@@ -34,6 +34,7 @@ def eval(metadata_path, results_path, pipeline_name='dc3', overwrite=False):
   benchmarker.plot_accuracy_comparison(pipeline_name, plt_comparison_path)
   benchmarker.save_accuracy_comparison(pipeline_name, acc_comparison_path)
 
+@profile
 def inference(input_dir, output_name):
   pipeline = DC3Pipeline()
   pipeline.predict_recursive_dir(input_dir, output_name, ext='.gz')
