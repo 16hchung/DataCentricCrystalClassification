@@ -9,15 +9,23 @@ import fire
 
 from dc3.model.full_pipeline import DC3Pipeline
 from dc3.util import constants as C
+from dc3.util.features import Featurizer
 from dc3.eval.benchmarker import Benchmarker
 from dc3.data.file_io import recursive_in_out_file_pairs
 
-def train(overwrite=False):
-  pipeline = DC3Pipeline(overwrite=overwrite)
+def train(overwrite=False, output_rt=C.DFLT_OUTPUT_RT, **featurizer_kwargs):
+  featurizer = Featurizer(**featurizer_kwargs)
+  pipeline = DC3Pipeline(overwrite=overwrite,
+                         featurizer=featurizer,
+                         output_rt=output_rt)
   if not pipeline.is_trained:
     pipeline.fit_end2end()
 
-def eval(metadata_path, results_path, pipeline_name='dc3', overwrite=False):
+def eval(metadata_path,
+         results_path,
+         output_rt=C.DFLT_OUTPUT_RT,
+         pipeline_name='dc3',
+         overwrite=False):
   # make result paths
   results_path = Path(results_path)
   results_path.mkdir(exist_ok=True)
@@ -26,7 +34,9 @@ def eval(metadata_path, results_path, pipeline_name='dc3', overwrite=False):
   X_cache_path = results_path / 'X_cache.pkl'
   y_cache_path = results_path / 'y_cache.pkl'
 
-  pipeline = DC3Pipeline()
+  pipeline_kwargs = {'output_rt': output_rt}
+  if output_rt != C.DFLT_OUTPUT_RT: pipeline_kwargs['featurizer'] = None
+  pipeline = DC3Pipeline(**pipeline_kwargs)
   benchmarker = Benchmarker.from_metadata_path(pipeline,
                                                metadata_path,
                                                X_pkl_path=X_cache_path,
@@ -34,7 +44,7 @@ def eval(metadata_path, results_path, pipeline_name='dc3', overwrite=False):
   benchmarker.plot_accuracy_comparison(pipeline_name, plt_comparison_path)
   benchmarker.save_accuracy_comparison(pipeline_name, acc_comparison_path)
 
-@profile
+#@profile
 def inference(input_dir, output_name):
   pipeline = DC3Pipeline()
   pipeline.predict_recursive_dir(input_dir, output_name, ext='.gz')

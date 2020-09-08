@@ -22,6 +22,7 @@ class Featurizer: # TODO make more accessible from higher level dir
   ''' Computes features from an ovito DataCollection '''
   def __init__(self, lattices=C.DFLT_LATTICES,
                      steinhardt_n_ls=C.STEIN_NUM_lS,
+                     steinhardt_shell_range=C.STEIN_SHELL_RANGE,
                      n_rsf_per_mu=C.N_RSF_PER_MU,
                      rsf_mu_step=C.RSF_MU_STEP,
                      rsf_sigma_scale=C.RSF_SIGMA_SCALE):
@@ -92,7 +93,6 @@ class Featurizer: # TODO make more accessible from higher level dir
     theta = np.arccos(R_cart[:,:,2] / np.linalg.norm(R_cart, axis=2))
     # compute for l's separately to make dimensions of sph_harm easier
     q_ls_list = []
-    Ns = np.arange(1, max_neigh+1, dtype=complex).reshape((1,max_neigh,1))
     for l in range(1, n_ls+1):
       # compute spherical harmonics, shape: (n_atoms, max_neigh, 2l+1)
       Y_lm = sph_harm(np.arange(-l, l+1), # range of m's
@@ -100,7 +100,7 @@ class Featurizer: # TODO make more accessible from higher level dir
                       np.expand_dims(phi,   axis=-1),
                       np.expand_dims(theta, axis=-1))
       # sum over neighbors (cumsum to cover all possible n_neigh) to get q_lm
-      q_lm = np.cumsum(Y_lm, axis=1) / Ns
+      q_lm = self._accumulate(Y_lm)
       # ^^^ has shape: (n_atoms, max_neigh, 2l+1)
       q_lm_sqr = q_lm * np.conjugate(q_lm)
       # sum over m to get main portion of q
@@ -169,6 +169,29 @@ class Featurizer: # TODO make more accessible from higher level dir
     G_stacked = np.sqrt(2*np.pi*np.square(Sigmas[:,:,np.newaxis])) * G_stacked
     G = np.reshape(G_stacked, (n_atoms, len(n_neighs)*n_rsf_per_mu), order='C')
     return G
+
+  def _accumulate(self, X):
+    ''' X shape: (n_atoms, max_neigh, 2l+1) '''
+    max_neigh = self.max_neigh
+    n_neighs  = self.n_neighs
+
+    Ns = np.arange(1, max_neigh+1, dtype=complex).reshape((1,max_neigh,1))
+    X_accum = np.cumsum(X, axis=1)
+    if not self.steinhardt_shell_range:
+      return X_accum / Ns
+
+    X_shell_accum = X_accum.copy()
+    Ns_shell = Ns.copy()
+    prev_start, prev_end = 0,0
+    for (start, end) in n_neighs:
+      if not start: 
+        prev_start, prev_end = start, end
+        continue
+      X_shell_accum[:, prev_end:end, :] -= X_accum[:, start-1:start, :]
+      Ns_shell[:, prev_end:end, :] -= Ns[:, start-1:start, :]
+      prev_start, prev_end = start, end
+
+    return X_shell_accum / Ns_shell
 
   def _get_deltas(self, ov_data_collection):
     n_atoms = ov_data_collection.particles.count
