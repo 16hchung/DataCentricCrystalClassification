@@ -12,17 +12,17 @@ TODO
 
 ## Usage
 
-TODO
+Download model from this [link](https://drive.google.com/file/d/1oV_Gg2b6iihfbLLOg-ShmwYsZue_A3xi/view?usp=sharing) and unzip
+
+This repo directory (`DataCentricCrystalClassification/`) should now include following files and dirs:
+`dc3/`, `default_pipeline.zip`, `README.md`, `config/`, `default_pipeline/`, `examples/`
 
 ### Ovito modifier
 
-TODO make this prettier...
-unzip pretrained model and make sure it's in `<path>`
 ```
 from dc3.model.modifier import DC3Modifier
 # add modifier to pipeline
 ```
-
 
 ## Components
 
