@@ -25,8 +25,8 @@ DFLT_LATTICES = [
   Lattice(name='fcc', perfect_path=str(PERF_DUMP_RT/'dump_fcc_perfect_0.dat'), neigh_range=[0,12]),
   Lattice(name='bcc', perfect_path=str(PERF_DUMP_RT/'dump_bcc_perfect_0.dat'), neigh_range=[0,12]),
   Lattice(name='hcp', perfect_path=str(PERF_DUMP_RT/'dump_hcp_perfect_0.dat'), neigh_range=[0,8 ]),
-  Lattice(name='cd' , perfect_path=str(PERF_DUMP_RT/'dump_cd_perfect_0.dat' ), neigh_range=[4,16]),
-  Lattice(name='hd' , perfect_path=str(PERF_DUMP_RT/'dump_hd_perfect_0.dat' ), neigh_range=[4,16]),
+  Lattice(name='cd' , perfect_path=str(PERF_DUMP_RT/'dump_cd_perfect_0.dat' ), neigh_range=[0,16]),
+  Lattice(name='hd' , perfect_path=str(PERF_DUMP_RT/'dump_hd_perfect_0.dat' ), neigh_range=[0,16]),
   Lattice(name='sc' , perfect_path=str(PERF_DUMP_RT/'dump_sc_perfect_0.dat' ), neigh_range=[0,6 ])
 ]
 

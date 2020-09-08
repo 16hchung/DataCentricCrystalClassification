@@ -9,7 +9,9 @@ __pycache__/**
 .*.swp
 *.vim
 
+default_pipeline
 default_pipeline/**
+shell_2_pipeline/**
 benchmarking/**
 sbatch-able.sh
 

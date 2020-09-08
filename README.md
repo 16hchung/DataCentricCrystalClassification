@@ -8,7 +8,7 @@ TODO
 
 ### Installation
 
-TODO
+`pip install -U .` or `ovitos -m pip install -U .`
 
 ## Usage
 
@@ -21,7 +21,8 @@ This repo directory (`DataCentricCrystalClassification/`) should now include fol
 
 ```
 from dc3.model.modifier import DC3Modifier
-# add modifier to pipeline
+# add modifier to pipeline, eg...
+ovitos_pipeline.modifiers.append(DC3Modifier)
 ```
 
 ## Components
