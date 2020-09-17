@@ -22,10 +22,11 @@ class Featurizer: # TODO make more accessible from higher level dir
   ''' Computes features from an ovito DataCollection '''
   def __init__(self, lattices=C.DFLT_LATTICES,
                      steinhardt_n_ls=C.STEIN_NUM_lS,
-                     steinhardt_shell_range=C.STEIN_SHELL_RANGE,
+                     shell_range=C.SHELL_RANGE, # eg use 4-16 instead of -16
                      n_rsf_per_mu=C.N_RSF_PER_MU,
                      rsf_mu_step=C.RSF_MU_STEP,
-                     rsf_sigma_scale=C.RSF_SIGMA_SCALE):
+                     rsf_sigma_scale=C.RSF_SIGMA_SCALE,
+                     rsf_use_neighbor_range=C.RSF_USE_NEIGH_RANGE):
     # add args automatically as instance variables
     kwargs = locals()
     self.__dict__.update(kwargs)
@@ -125,6 +126,7 @@ class Featurizer: # TODO make more accessible from higher level dir
     n_rsf_per_mu = self.n_rsf_per_mu
     mu_step      = self.rsf_mu_step
     sigma_scale  = self.rsf_sigma_scale
+    use_neigh_rng= self.rsf_use_neighbor_range
    
     if not isinstance(R_cart, np.ndarray):
       # shape: (n_atoms, max_neigh, 3)
@@ -132,6 +134,42 @@ class Featurizer: # TODO make more accessible from higher level dir
     n_atoms = len(R_cart)
     # convert to from xyz to magnitude
     R = np.linalg.norm(R_cart, axis=2) # shape: (n_atoms, max_neigh)
+    # Mus shape: (n_atoms, len(n_neighs) or max_neigh,  n_rsf_per_mu)
+    # Sigmas shape: (n_atoms, len(n_neighs) or max_neigh)
+    Mus, Sigmas, n_features = self._rsf_get_mus_sigmas(R)
+    # use maximual r_cut with some buffer
+    r_cut = np.max(Mus) + 4*np.max(Sigmas)
+    # retrieve distances for each
+    # shapes: (n_atoms, max neigh w/in cutoff per atom)
+    distances = self._get_variable_neigh_distances(ov_data_collection, r_cut)
+    # NOTE: expanding dims so they can be broadcast together in norm.pdf
+    # (n_atoms, len(n_neighs), n_rsf_per_mu, max neigh w/in cutoff per atom)
+    soft_counts = sp_norm.pdf(distances[:, np.newaxis, np.newaxis, :],
+                              loc=Mus[:, :, :, np.newaxis],
+                              scale=Sigmas[:, :, np.newaxis, np.newaxis])
+    # (n_atoms, len(n_neighs), n_rsf_per_mu)
+    G_stacked = np.sum(soft_counts, axis=-1)
+    G_stacked = np.sqrt(2*np.pi*np.square(Sigmas[:,:,np.newaxis])) * G_stacked
+    G = np.reshape(G_stacked, (n_atoms, n_features), order='C')
+    return G
+
+  def _rsf_get_mus_sigmas(self, R):
+    """ R  shape: (n_atoms, max_neigh) """
+    max_neigh    = self.max_neigh
+    sigma_scale  = self.rsf_sigma_scale
+    use_neigh_rng= self.rsf_use_neighbor_range
+    n_neighs     = self.n_neighs
+    n_rsf_per_mu = self.n_rsf_per_mu
+    mu_step      = self.rsf_mu_step
+
+    # Use 1-16 neighbors
+    if use_neigh_rng:
+      Mus = self._accumulate(R, dtype=float)
+      Mus = Mus / np.arange(1, max_neigh+1).reshape([1, max_neigh])
+      Sigmas = Mus * sigma_scale
+      return Mus[:,:,np.newaxis], Sigmas, max_neigh
+
+    # Use 6/8/12/16 neighbors
     # used for generating mus centered around main mus, eg if n_rsf_per_mu is 5, 
     #   want range to be -2, -1, 0, 1, 2
     mu_incr_range = range(int(n_rsf_per_mu / -2),
@@ -153,31 +191,18 @@ class Featurizer: # TODO make more accessible from higher level dir
     # shape: (n_atoms, len(n_neighs),  n_rsf_per_mu)
     Mus = np.stack(Mu_list, axis=1)
     Sigmas = np.stack(Sigma_list, axis=-1) # shape: (n_atoms, len(n_neighs))
+    return Mus, Sigmas, len(n_neighs) * n_rsf_per_mu
 
-    # use maximual r_cut with some buffer
-    r_cut = np.max(Mus) + 4*np.max(Sigmas)
-    # retrieve distances for each
-    # shapes: (n_atoms, max neigh w/in cutoff per atom)
-    distances = self._get_variable_neigh_distances(ov_data_collection, r_cut)
-    # NOTE: expanding dims so they can be broadcast together in norm.pdf
-    # (n_atoms, len(n_neighs), n_rsf_per_mu, max neigh w/in cutoff per atom)
-    soft_counts = sp_norm.pdf(distances[:, np.newaxis, np.newaxis, :],
-                              loc=Mus[:, :, :, np.newaxis],
-                              scale=Sigmas[:, :, np.newaxis, np.newaxis])
-    # (n_atoms, len(n_neighs), n_rsf_per_mu)
-    G_stacked = np.sum(soft_counts, axis=-1)
-    G_stacked = np.sqrt(2*np.pi*np.square(Sigmas[:,:,np.newaxis])) * G_stacked
-    G = np.reshape(G_stacked, (n_atoms, len(n_neighs)*n_rsf_per_mu), order='C')
-    return G
-
-  def _accumulate(self, X):
-    ''' X shape: (n_atoms, max_neigh, 2l+1) '''
+  def _accumulate(self, X, dtype=complex):
+    ''' X shape: (n_atoms, max_neigh, ...) '''
     max_neigh = self.max_neigh
     n_neighs  = self.n_neighs
 
-    Ns = np.arange(1, max_neigh+1, dtype=complex).reshape((1,max_neigh,1))
+    assert len(X.shape) in [2, 3]
+    Ns_shape = (1,max_neigh,1) if len(X.shape) == 3 else (1,max_neigh)
+    Ns = np.arange(1, max_neigh+1, dtype=dtype).reshape(Ns_shape)
     X_accum = np.cumsum(X, axis=1)
-    if not self.steinhardt_shell_range:
+    if not self.shell_range:
       return X_accum / Ns
 
     X_shell_accum = X_accum.copy()
@@ -187,8 +212,8 @@ class Featurizer: # TODO make more accessible from higher level dir
       if not start: 
         prev_start, prev_end = start, end
         continue
-      X_shell_accum[:, prev_end:end, :] -= X_accum[:, start-1:start, :]
-      Ns_shell[:, prev_end:end, :] -= Ns[:, start-1:start, :]
+      X_shell_accum[:, prev_end:end, ...] -= X_accum[:, start-1:start, ...]
+      Ns_shell[:, prev_end:end, ...] -= Ns[:, start-1:start, ...]
       prev_start, prev_end = start, end
 
     return X_shell_accum / Ns_shell
