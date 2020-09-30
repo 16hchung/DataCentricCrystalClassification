@@ -63,7 +63,7 @@ DFLT_CLF_KWARGS = {'C': 10,
                    'class_weight': 'balanced',
                    'verbose': 2}
 
-GS_SCORING = 'f1_samples'
+GS_SCORING = 'f1_weighted'
 GS_NJOBS = -1
 GS_VERBOSITY = 2
 

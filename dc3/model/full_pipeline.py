@@ -184,6 +184,14 @@ class DC3Pipeline:
     with open(str(self.clf_gs_res_path), 'wb') as f: pk.dump(gs.cv_results_, f)
     self._save_clf_hparams()
 
+  def _format_to_clf_lbls(self, y):
+    if self._clf_type != C.NN_CLF_TYPE: return y
+    else: return np.eye(len(self.lattices))[y.astype(int)]
+
+  def _format_from_clf_lbls(self, y):
+    if self._clf_type != C.NN_CLF_TYPE: return y
+    else: return np.argmax(y, axis=1)
+
   def fit(self, X, y, perf_xs, overwrite=False):
     self.weights_path.mkdir(exist_ok=overwrite)
     # fit scaler to training data
@@ -192,7 +200,8 @@ class DC3Pipeline:
     X = self.scaler.transform(X)
     # train classifier
     X, y = shuffle(X, y)
-    X_train, y_train = X[:50000,:], y[:50000]
+    y_clf = self._format_to_clf_lbls(y)
+    X_train, y_train = X[:50000,:], y[:50000,...]
     ran_gs = self._gs_clf(X_train, y_train, overwrite)
     if not ran_gs:
       self.classifier.fit(X_train, y_train)
@@ -232,6 +241,7 @@ class DC3Pipeline:
     X = self.featurizer.compute(ov_data_collection)
     X = self.scaler.transform(X)
     y_cand = self.classifier.predict(X)
+    y_cand = self._format_from_clf_lbls(y_cand)
     y = self.outlier_detector.predict(X, y_cand)
     return X, y
 
