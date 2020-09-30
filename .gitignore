@@ -11,6 +11,8 @@ __pycache__/**
 
 *_pipeline
 *_pipeline/**
+*_pipeline-OBSOLETE
+*_pipeline-OBSOLETE/**
 benchmarking/**
 sbatch-able.sh
 

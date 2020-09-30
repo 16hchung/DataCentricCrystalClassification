@@ -16,7 +16,10 @@ from scipy.special import sph_harm
 from scipy.stats import norm as sp_norm
 
 from . import constants as C
-from .util import Lattice, range_list_max, n_neighs_from_lattices
+from .util import (Lattice,
+                   range_list_max,
+                   n_neighs_from_lattices,
+                   split_kwargs_among_fxns)
 
 class Featurizer: # TODO make more accessible from higher level dir
   ''' Computes features from an ovito DataCollection '''
@@ -49,6 +52,7 @@ class Featurizer: # TODO make more accessible from higher level dir
   def from_saved_path(cls, save_path):
     with open(str(save_path)) as f:
       kwargs = json.load(f)
+    (_,kwargs), = split_kwargs_among_fxns(cls, **kwargs)
     lattices = [Lattice(*l_args) for l_args in kwargs['lattices']]
     kwargs['lattices'] = lattices
     return cls(**kwargs)

@@ -5,6 +5,7 @@ inference on your own simulation output files
 
 from pathlib import Path
 from tqdm import tqdm
+import json
 import fire
 
 from dc3.model.full_pipeline import DC3Pipeline
@@ -13,10 +14,22 @@ from dc3.util.features import Featurizer
 from dc3.eval.benchmarker import Benchmarker
 from dc3.data.file_io import recursive_in_out_file_pairs
 
-def train(overwrite=False, output_rt=C.DFLT_OUTPUT_RT, **featurizer_kwargs):
+def train(overwrite=False, 
+          output_rt=C.DFLT_OUTPUT_RT,
+          clf_param_opt_json=None,
+          **featurizer_kwargs):
   featurizer = Featurizer(**featurizer_kwargs)
+  clf_param_options = None
+  if clf_param_opt_json:
+    with open(clf_param_opt_json) as f: clf_param_options = json.load(f)
+    for k,v in clf_param_options.items():
+      if isinstance(v[0], list): 
+        clf_param_options[k] = [tuple(x) for x in v] # make items copyable
   pipeline = DC3Pipeline(overwrite=overwrite,
                          featurizer=featurizer,
+                         clf_type=C.NN_CLF_TYPE,
+                         clf_params={},
+                         clf_param_options=clf_param_options,
                          output_rt=output_rt)
   if not pipeline.is_trained:
     pipeline.fit_end2end()

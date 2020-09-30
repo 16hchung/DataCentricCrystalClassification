@@ -1,12 +1,15 @@
 from tqdm import tqdm
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
 from sklearn.utils import shuffle
 from pathlib import Path
 import numpy as np
+import pickle as pk
 import warnings
 import joblib
 import gc
+import json
 
 from ovito.io import import_file, export_file
 
@@ -20,13 +23,18 @@ from .outlier_detector import OutlierDetector
 class DC3Pipeline:
   def __init__(self, lattices=C.DFLT_LATTICES,
                      featurizer=Featurizer(),
-                     classifier=SVC(**C.DFLT_CLF_KWARGS),
+                     clf_type=C.DFLT_CLF_TYPE,
+                     clf_params=C.DFLT_CLF_KWARGS,
+                     clf_param_options=None, # if not None, do grid search
                      outlier_detector=OutlierDetector(),
                      output_rt=C.DFLT_OUTPUT_RT,
+                     synth_dump_path=None,
                      overwrite=False):
-    self._make_paths(output_rt)
+    self._make_paths(output_rt, clf_type)
+    if synth_dump_path: self.synth_dump_path = Path(synth_dump_path)
     self._init_config_and_featurizer(lattices, featurizer, overwrite)
-    self._init_models(classifier, outlier_detector, overwrite)
+    self._init_models(clf_type, clf_params, clf_param_options, 
+                      outlier_detector, overwrite)
     
   def _init_config_and_featurizer(self, lattices, featurizer, overwrite):
     if self.cfg_path.exists() and not overwrite:
@@ -41,32 +49,58 @@ class DC3Pipeline:
       self.featurizer.save(self.cfg_path)
     self.name_to_lbl_latt = {l.name: (i,l) for i,l in enumerate(self.lattices)}
     
-  def _init_models(self, classifier, outlier_detector, overwrite):
+  def _init_models(self, clf_type,
+                         clf_params,
+                         clf_param_options,
+                         outlier_detector,
+                         overwrite):
+    # If not overwriting and pretrained models are in file sys, load them
     if self.scaler_path.exists() and self.outlier_path.exists() \
                                  and self.classifier_path.exists() \
                                  and not overwrite:
-      if classifier != None or outlier_detector != None:
+      if clf_params != None or outlier_detector != None:
         warnings.warn(
           'Using cached models. ' + 
-          'Ignoring classifier and outlier_detector passed into DC3Pipeline constructor'
+          'Ignoring clf_params and outlier_detector passed into DC3Pipeline constructor'
         )
       self.scaler = joblib.load(self.scaler_path)
       self.classifier = joblib.load(self.classifier_path)
       self.outlier_detector = OutlierDetector.from_saved_path(self.outlier_path)
       self.is_trained = True
+    # Otherwise, init models with default params
     else:
       assert isinstance(outlier_detector, OutlierDetector) and \
-             isinstance(classifier, SVC)
+            ( isinstance(clf_params, dict) or \
+              isinstance(clf_param_options, dict) or \
+              self.clf_cfg_path.exists() )
       self.scaler           = StandardScaler()
       self.outlier_detector = outlier_detector
-      self.classifier       = classifier
+      if self.clf_cfg_path.exists():
+        with open(str(self.clf_cfg_path)) as f: clf_params = json.load(f)
+        if clf_params:
+          warnings.warn(
+            'Using cached hparams, ignoring clf_params passed into DC3Pipeline'
+          )
+      self.classifier = clf_type(**clf_params) if clf_params else None
       self.is_trained = False
+    self._save_clf_hparams()
+    self._clf_type = clf_type
+    self._clf_params = clf_params
+    self._clf_param_options = clf_param_options
 
-  def _make_paths(self, output_rt):
+  def _save_clf_hparams(self):
+    if not self.classifier:
+      warnings.warn('could notsave hparams for None classifier')
+      return
+    with open(str(self.clf_cfg_path), 'w') as f:
+      json.dump(self.classifier.get_params(), f)
+
+  def _make_paths(self, output_rt, clf_type):
     output_rt = Path(output_rt)
     output_rt.mkdir(exist_ok=True)
     # settings for this model
     self.cfg_path = output_rt / 'config.json'
+    self.clf_cfg_path = output_rt / f'{clf_type.__name__}_config.json'
     # train-related paths
     self.train_rt = output_rt / 'train'
     self.train_rt.mkdir(exist_ok=True)
@@ -76,8 +110,12 @@ class DC3Pipeline:
     self.perf_feat_path  = self.train_rt / 'perfect_features.npz'
     self.weights_path    = self.train_rt / 'weights'
     self.scaler_path     = self.weights_path / 'scaler.joblib'
-    self.classifier_path = self.weights_path / 'svc.joblib'
+    self.classifier_path = self.weights_path / f'{clf_type.__name__}.joblib'
     self.outlier_path    = self.weights_path / 'outlier_detector.pkl'
+    # clf grid search related paths
+    self.clf_gs_path     = self.train_rt / f'clf_gs_{clf_type.__name__}'
+    self.clf_gs_cfg_path = self.clf_gs_path / 'param_options.json'
+    self.clf_gs_res_path = self.clf_gs_path / 'results.pkl'
     # inference-related paths
     self.inference_rt = output_rt / 'inference'
     # evaluation-related output
@@ -122,6 +160,30 @@ class DC3Pipeline:
     perf_xs = [npzfile[key] for key in npzfile.files]
     return perf_xs
 
+  def _gs_clf(self, X, y, overwrite):
+    if not self._clf_param_options: return False # no listed paramas to try
+
+    # path stuff
+    self.clf_gs_path.mkdir(exist_ok=overwrite)
+    with open(str(self.clf_gs_cfg_path), 'w') as f: 
+      json.dump(self._clf_param_options, f)
+
+    # init gs object
+    gs = GridSearchCV(self._clf_type(),
+                      self._clf_param_options,
+                      scoring=C.GS_SCORING,
+                      n_jobs=C.GS_NJOBS,
+                      refit=True,
+                      verbose=C.GS_VERBOSITY,
+                      return_train_score=True)
+    # run gs
+    gs.fit(X, y)
+    # set classifier to best model
+    self.classifier = gs.best_estimator_
+    # save results to disk
+    with open(str(self.clf_gs_res_path), 'wb') as f: pk.dump(gs.cv_results_, f)
+    self._save_clf_hparams()
+
   def fit(self, X, y, perf_xs, overwrite=False):
     self.weights_path.mkdir(exist_ok=overwrite)
     # fit scaler to training data
@@ -131,7 +193,9 @@ class DC3Pipeline:
     # train classifier
     X, y = shuffle(X, y)
     X_train, y_train = X[:50000,:], y[:50000]
-    self.classifier.fit(X_train, y_train)
+    ran_gs = self._gs_clf(X_train, y_train, overwrite)
+    if not ran_gs:
+      self.classifier.fit(X_train, y_train)
     joblib.dump(self.classifier, self.classifier_path)
     # TODO add hparam grid searching
     # train outlier detector

@@ -3,6 +3,7 @@ NOTE: util/constants.py imports functions from this module => do not import othe
 custom modules! (this should have no custom dependencies)
 '''
 from collections import namedtuple
+from inspect import signature, Parameter
 
 Lattice = namedtuple('Lattice', ['name', 'perfect_path', 'neigh_range'])
 
@@ -27,3 +28,31 @@ def lazy_property(fn):
         return getattr(self, attr_name)
     return _lazy_property
 
+def split_kwargs_among_fxns(*fxns, **all_kwargs):
+  fxn_arg_pairs = []
+  for fxn in fxns:
+    fxn_params = signature(fxn).parameters
+    kwargs = { arg_name: arg_val 
+               for arg_name, arg_val in all_kwargs.items()
+               if arg_name in fxn_params and
+                  fxn_params[arg_name].kind == Parameter.POSITIONAL_OR_KEYWORD }
+    fxn_arg_pairs.append( (fxn, kwargs) )
+  return fxn_arg_pairs
+
+def generate_arg_combos(**kwargs):
+  exclude = [] \
+            if not exclude_no_option \
+            else [k for k,v in kwargs.items() if len(v) <= 1]
+  keys = kwargs.keys()
+  vals = kwargs.values()
+  for instance in itertools.product(*vals):
+    this_kwargs = dict(zip(keys, instance))
+    name_kwargs = {k:v for k,v in this_kwargs.items() if k not in exclude}
+    stringified = stringify_args(**name_kwargs)
+    yield stringified, this_kwargs
+
+def stringify_args(**kwargs):
+  arg_strs = []
+  for k,v in kwargs.items():
+    arg_strs.append(f'{k}-{v}')
+  return '_'.join(arg_strs)

@@ -1,4 +1,5 @@
 from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
 from pathlib import Path
 from collections import namedtuple
 import numpy as np
@@ -44,14 +45,16 @@ STEIN_NUM_lS = 10
 
 SHELL_RANGE = False
 
-N_RSF_PER_MU = 7
+N_RSF_PER_MU = 7 # DEPRECATED
 RSF_MU_STEP = .05
 RSF_SIGMA_SCALE = .05
-RSF_USE_NEIGH_RANGE = False
+RSF_USE_NEIGH_RANGE = True
 
 FEATURE_PRECISION = 11
 
 # Classifier
+DFLT_CLF_TYPE = SVC
+NN_CLF_TYPE = MLPClassifier
 DFLT_CLF_KWARGS = {'C': 10,
                    'gamma': .01,
                    'max_iter': 1e5,
@@ -59,5 +62,9 @@ DFLT_CLF_KWARGS = {'C': 10,
                    'cache_size': 1000,
                    'class_weight': 'balanced',
                    'verbose': 2}
+
+GS_SCORING = 'f1_samples'
+GS_NJOBS = -1
+GS_VERBOSITY = 2
 
 DFLT_OUTLIER_PCUT = 95
