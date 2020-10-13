@@ -1,21 +1,14 @@
-# DataCentricCrystalClassifier (DC<sup>3</sup>)
+# DataCentricCrystalClassifier (DC)
 
 ## Setup
 
 ### Requirements
 
-TODO
+Tested with python3.7, ovito scripting package (called ovitos) -- future tasks include extending to open source packages
 
 ### Installation
 
 `pip install -U .` or `ovitos -m pip install -U .`
-
-## Usage
-
-Download model from this [link](https://drive.google.com/file/d/1oV_Gg2b6iihfbLLOg-ShmwYsZue_A3xi/view?usp=sharing) and unzip
-
-This repo directory (`DataCentricCrystalClassification/`) should now include following files and dirs:
-`dc3/`, `default_pipeline.zip`, `README.md`, `config/`, `default_pipeline/`, `examples/`
 
 ### Ovito modifier
 
@@ -31,12 +24,11 @@ ovitos_pipeline.modifiers.append(DC3Modifier)
 
 `dc3/`: crystal classifier package
 
-- `util/`: self-explanatory
-    - `features.py`, `constants.py`
-- `data/`: handle synthetic data generation, file i/o, downloading training data
+- `util/`: contains featurizer, constants, etc
+- `data/`: handle synthetic data generation, file i/o
 - `model/`: SVM model and data scaler handling
     - `modifier.py`: source code to implement ovito modifier 
-- `train/`: scripts to help train for new classes (defaults are: BCC, FCC, HCP, HD, CD, SC)
+- `eval/`: scripts to help evaluate different pipeline versions
 
-`examples/`: will feature example usages of dc3
+`examples/`: features example usages of dc3
 
