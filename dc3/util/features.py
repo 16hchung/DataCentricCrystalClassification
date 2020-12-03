@@ -66,10 +66,16 @@ class Featurizer: # TODO make more accessible from higher level dir
       prev_start, prev_end = start, end
 
   def compute(self, ov_data_collection):
-    R_cart = self._get_deltas(ov_data_collection)
-    Q = self.compute_steinhardt(ov_data_collection, R_cart=R_cart)
-    G = self.compute_rsf(ov_data_collection, R_cart=R_cart)
-    return np.concatenate((Q,G), axis=1)
+    feature_sets = []
+    for particle_type in np.unique(ov_data_collection.particles.particle_types):
+      R_cart = self._get_deltas(ov_data_collection, particle_type)
+      feature_sets.append(self.compute_steinhardt(ov_data_collection,
+                                                  R_cart=R_cart,
+                                                  particle_type=particle_type))
+      feature_sets.append(self.compute_rsf(ov_data_collection,
+                                           R_cart=R_cart,
+                                           particle_type=particle_type))
+    return np.concatenate(feature_sets, axis=1)
 
   def compute_perf_from_dump(self, dump_path):
     ov_data_collection = import_file(str(dump_path)).compute()
@@ -82,7 +88,7 @@ class Featurizer: # TODO make more accessible from higher level dir
                  .index.tolist()[-1] )      # only grab most common x
     return np.array(perf_x)
 
-  def compute_steinhardt(self, ov_data_collection, R_cart=None):
+  def compute_steinhardt(self, ov_data_collection, R_cart=None, particle_type=None):
     '''
     TODO documentation
     '''
@@ -91,7 +97,7 @@ class Featurizer: # TODO make more accessible from higher level dir
   
     if not isinstance(R_cart, np.ndarray):
       # shape: (n_atoms, max_neigh, 3)
-      R_cart = self._get_deltas(ov_data_collection)
+      R_cart = self._get_deltas(ov_data_collection, particle_type)
     n_atoms = len(R_cart)
     # convert to spherical coords
     phi = np.arctan2(R_cart[:,:,1], R_cart[:,:,0]) # shape: (n_atoms, max_neigh)
@@ -121,7 +127,7 @@ class Featurizer: # TODO make more accessible from higher level dir
     Q = np.reshape(q_l_3d, (n_atoms, n_possible_neigh*n_ls), order='C')
     return Q # shape: (n_atoms, n_features --dflt 150)
 
-  def compute_rsf(self, ov_data_collection, R_cart=None):
+  def compute_rsf(self, ov_data_collection, R_cart=None, particle_type=None):
     '''
     TODO documentation
     '''
@@ -134,7 +140,7 @@ class Featurizer: # TODO make more accessible from higher level dir
    
     if not isinstance(R_cart, np.ndarray):
       # shape: (n_atoms, max_neigh, 3)
-      R_cart = self._get_deltas(ov_data_collection)
+      R_cart = self._get_deltas(ov_data_collectioni, particle_type)
     n_atoms = len(R_cart)
     # convert to from xyz to magnitude
     R = np.linalg.norm(R_cart, axis=2) # shape: (n_atoms, max_neigh)
@@ -145,7 +151,7 @@ class Featurizer: # TODO make more accessible from higher level dir
     r_cut = np.max(Mus) + 4*np.max(Sigmas)
     # retrieve distances for each
     # shapes: (n_atoms, max neigh w/in cutoff per atom)
-    distances = self._get_variable_neigh_distances(ov_data_collection, r_cut)
+    distances = self._get_variable_neigh_distances(ov_data_collection, r_cut, particle_type)
     # NOTE: expanding dims so they can be broadcast together in norm.pdf
     # (n_atoms, len(n_neighs), n_rsf_per_mu, max neigh w/in cutoff per atom)
     soft_counts = sp_norm.pdf(distances[:, np.newaxis, np.newaxis, :],
@@ -222,32 +228,44 @@ class Featurizer: # TODO make more accessible from higher level dir
 
     return X_shell_accum / Ns_shell
 
-  def _get_deltas(self, ov_data_collection):
-    n_atoms = ov_data_collection.particles.count
+  @staticmethod
+  def _get_filtered_data_collection(ov_data_collection, particle_type=None):
+    if particle_type is None: return ov_data_collection
+
+    ov_neigh_data = ov_data_collection.clone()
+    ov_neigh_data.cell_.pbc = (False, False, False) # make this copy a deep copy
+    ov_neigh_data.apply(ExpressionSelectionModifier(expression=f'ParticleType == {}'))
+    ov_neigh_data.apply(DeleteSelectedModifier())
+    return ov_neigh_data
+
+  def _get_deltas(self, ov_data_collection, particle_type=None):
+    # only choose neighbors of certain type
+    ov_neigh_data = self._get_filtered_data_collection(ov_data_collection, particle_type)
 
     # generate R_cart: matrix of deltas to neighbors in cartesion coords
     #           shape: (n_atoms, max_neigh, 3)
     # TODO find non-ovito version of this
-    finder = NearestNeighborFinder(self.max_neigh, ov_data_collection)
+    finder = NearestNeighborFinder(self.max_neigh, ov_neigh_data)
     R_list = [
-      [neigh.delta for neigh in finder.find(iatom)]
-      for iatom in range(n_atoms)
+      [neigh.delta for neigh in finder.find(atom_pos)]
+      for atom_pos in ov_data_collection.particles.positions
     ]
     R_cart = np.array(R_list)
     return R_cart
 
   def _get_variable_neigh_distances(self, ov_data_collection,
                                           r_cut,
-                                          pad=np.inf):
-    n_atoms = ov_data_collection.particles.count
-
+                                          pad=np.inf,
+                                          particle_type=None):
+    # only choose neighbors of certain type
+    ov_neigh_data = self._get_filtered_data_collection(ov_data_collection, particle_type)
     finder = CutoffNeighborFinder(cutoff=r_cut,
-                                  data_collection=ov_data_collection)
+                                  data_collection=ov_neigh_data)
     # retrieve neighbor distances from ovito finder (all elements may
     # be different lengths, shape: list len = n_atoms, each el len = ?
     distances_list = [
-        np.array( [neigh.distance for neigh in finder.find(iatom)] )
-        for iatom in range(n_atoms)
+        np.array( [neigh.distance for neigh in finder.find(atom_pos)] )
+        for atom_pos in ov_data_collection.particles.positions
     ]
     max_len = max([len(l) for l in distances_list])
     padded_list = [

@@ -242,7 +242,7 @@ class DC3Pipeline:
     X = self.scaler.transform(X)
     y_cand = self.classifier.predict(X)
     y_cand = self._format_from_clf_lbls(y_cand)
-    y = self.outlier_detector.predict(X, y_cand)
+    y = self.outlier_detector.predict(X, y_cand, ov_data_collection)
     return X, y
 
   def predict_recursive_dir(self, input_dir, output_name, ext='.gz'):
