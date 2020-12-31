@@ -16,7 +16,7 @@ from ovito.io import import_file, export_file
 from ..util import constants as C
 from ..util.util import n_neighs_from_lattices
 from ..util.features import Featurizer
-from ..data.synthetic import distort_perfect
+from ..data.synthetic import distort_perfect, make_synthetic_liq
 from ..data.file_io import recursive_in_out_file_pairs
 from .outlier_detector import OutlierDetector
 
@@ -106,7 +106,9 @@ class DC3Pipeline:
     self.train_rt.mkdir(exist_ok=True)
     self.synth_dump_path = self.train_rt / 'dump'
     self.synth_feat_path = self.train_rt / 'synth_features.npy'
+    self.synth_alpha_path= self.train_rt / 'synth_alpha.npy'
     self.synth_lbls_path = self.train_rt / 'synth_labels.npy'
+    self.liq_alpha_path  = self.train_rt / 'synth_liq_alpha.npy'
     self.perf_feat_path  = self.train_rt / 'perfect_features.npz'
     self.weights_path    = self.train_rt / 'weights'
     self.scaler_path     = self.weights_path / 'scaler.joblib'
@@ -125,7 +127,16 @@ class DC3Pipeline:
                                    overwrite=False):
     self.synth_dump_path.mkdir(exist_ok=overwrite)
     # get synthetic training data
-    Xs, ys = [], []
+    Xs, ys, alphas, liq_alphas = [], [], [], []
+
+    def get_X_alpha(ov_collections):
+      all_features = [self.featurizer.compute(ov_collection)
+                     for ov_collection in tqdm(ov_collections)]
+      X_list, alpha_list = zip(*all_features)
+      X = np.concatenate(X_list, axis=0)
+      alpha = np.concatenate(alpha_list)
+      return X, alpha
+
     for label, latt in enumerate(self.lattices):
       print(latt)
       # get distorted cartesian coords
@@ -134,18 +145,27 @@ class DC3Pipeline:
       ov_collections = distort_perfect(latt.perfect_path,
                                        distort_bins=distort_bins,
                                        save_path=latt_dump_path)
-      X_latt_list = [self.featurizer.compute(ov_collection)
-                     for ov_collection in tqdm(ov_collections)]
-      X_latt = np.concatenate(X_latt_list, axis=0)
+      X_latt, alpha_latt = get_X_alpha(ov_collections)
       y_latt = np.array( [float(label)] * len(X_latt) )
 
       Xs.append(X_latt)
       ys.append(y_latt)
+      alphas.append(alpha_latt)
+
+      liq_collection = make_synthetic_liq(latt.perfect_path,
+                                          save_path=latt_dump_path)
+      _, alpha_liq = get_X_alpha([liq_collection])
+      liq_alphas.append(alpha_liq)
     X = np.concatenate(Xs, axis=0)
     y = np.concatenate(ys, axis=0)
+    alpha = np.concatenate(alphas)
+    liq_alpha = np.concatenate(liq_alphas)
+
     np.save(self.synth_feat_path, X)
     np.save(self.synth_lbls_path, y)
-    return X, y
+    np.save(self.synth_alpha_path, alpha)
+    np.save(self.liq_alpha_path, liq_alpha)
+    return X, y, alpha, liq_alpha
 
   def compute_perf_features(self):
     perf_xs = []
@@ -192,7 +212,7 @@ class DC3Pipeline:
     if self._clf_type != C.NN_CLF_TYPE: return y
     else: return np.argmax(y, axis=1)
 
-  def fit(self, X, y, perf_xs, overwrite=False):
+  def fit(self, X, y, perf_xs, alpha, liq_alpha, overwrite=False):
     self.weights_path.mkdir(exist_ok=overwrite)
     # fit scaler to training data
     self.scaler.fit(X)
@@ -201,7 +221,7 @@ class DC3Pipeline:
     # train classifier
     X, y = shuffle(X, y)
     y_clf = self._format_to_clf_lbls(y)
-    X_train, y_train = X[:50000,:], y[:50000,...]
+    X_train, y_train = X[:50000,:], y_clf[:50000,...]
     ran_gs = self._gs_clf(X_train, y_train, overwrite)
     if not ran_gs:
       self.classifier.fit(X_train, y_train)
@@ -209,7 +229,7 @@ class DC3Pipeline:
     # TODO add hparam grid searching
     # train outlier detector
     perf_xs = [np.array(x) for x in self.scaler.transform(perf_xs).tolist()]
-    self.outlier_detector.fit(X, y, perf_xs)
+    self.outlier_detector.fit(X, y, perf_xs, alpha, liq_alpha)
     self.outlier_detector.save(self.outlier_path)
     self.is_trained = True
     return self
@@ -217,11 +237,13 @@ class DC3Pipeline:
   def fit_end2end(self, distort_bins=C.DFLT_DISTORT_BINS,
                         overwrite=False):
     if not overwrite and self.synth_feat_path.exists() \
-                          and self.synth_lbls_path.exists():
+                     and self.synth_lbls_path.exists():
       X = np.load(self.synth_feat_path)
       y = np.load(self.synth_lbls_path)
+      alpha = np.load(self.synth_alpha_path)
+      liq_alpha = np.load(self.liq_alpha_path)
     else:
-      X, y = self.compute_synth_features(distort_bins=distort_bins)
+      X, y, alpha, liq_alpha = self.compute_synth_features(distort_bins=distort_bins)
     if not overwrite and self.perf_feat_path.exists():
       perf_xs = self.load_perf_features()
     else:
@@ -230,7 +252,7 @@ class DC3Pipeline:
     if not overwrite and False:
       raise NotImplementedError # TODO load cached models
     else:
-      self.fit(X, y, perf_xs)
+      self.fit(X, y, perf_xs, alpha, liq_alpha)
     return self
 
   def predict(self, ov_data_collection):
@@ -238,11 +260,11 @@ class DC3Pipeline:
 
   def predict_return_features(self, ov_data_collection):
     assert self.is_trained
-    X = self.featurizer.compute(ov_data_collection)
+    X, alpha = self.featurizer.compute(ov_data_collection)
     X = self.scaler.transform(X)
     y_cand = self.classifier.predict(X)
     y_cand = self._format_from_clf_lbls(y_cand)
-    y = self.outlier_detector.predict(X, y_cand, ov_data_collection)
+    y = self.outlier_detector.predict(X, alpha, y_cand, ov_data_collection)
     return X, y
 
   def predict_recursive_dir(self, input_dir, output_name, ext='.gz'):

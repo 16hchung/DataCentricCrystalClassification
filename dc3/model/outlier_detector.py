@@ -4,7 +4,7 @@ import numpy as np
 import numpy.linalg
 
 from ..util import constants as C
-
+from ..util.util import get_optimal_cutoff
 class OutlierDetector:
   outlier_lbl = -1
 
@@ -12,14 +12,16 @@ class OutlierDetector:
                      percentile_cut=C.DFLT_OUTLIER_PCUT,
                      perfect_features=None,
                      label_to_cutoffs_dict=None,
+                     alpha_cutoff=None,
                      amorph_sim_cut=C.DFLT_AMORPH_SIM_CUT):
     self.percentile_cut = percentile_cut
     self.perf_xs = perfect_features
     self.lbl_to_cutoff = label_to_cutoffs_dict
     self.amorph_sim_cut = amorph_sim_cut
     self.max_neigh = max_neigh
+    self.alpha_cutoff = alpha_cutoff
 
-  def fit(self, X, y, perf_xs):
+  def fit(self, X, y, perf_xs, alpha, liq_alpha):
     self.perf_xs = perf_xs
     self.lbl_to_cutoff = {}
     # iterate over lattices
@@ -28,24 +30,19 @@ class OutlierDetector:
       X_latt = X[y==lbl][:]
       D = self._distance(X_latt, perf_x)
       self.lbl_to_cutoff[lbl] = np.percentile(D, self.percentile_cut)
+    self.alpha_cutoff = get_optimal_cutoff(liq_alpha, alpha)
     return self
 
-  def predict(self, X, y, data_collection):
+  def predict(self, X, alpha, y, data_collection):
     # first find amorphous outliers
-    finder = NearestNeighborFinder(self.max_neigh, data_collection)
-    X_neigh_means = [
-      np.mean([X[n.index,:] for n in finder.find(iatom)], axis=0)
-      for iatom in ov_data_collection.particles.count
-    ]
-    sim_to_neigh = self._datapoint_wise_cos_sim(X, X_neigh_means)
-    y[sim_to_neigh < self.amorph_sim_cut] = self.outlier_lbl
+    y[alpha < self.alpha_cutoff] = self.outlier_lbl
     # now find crystal outliers (but not included in this model's classes)
     for lbl, perf_x in enumerate(self.perf_xs):
       cutoff = self.lbl_to_cutoff[lbl]
       # extract this lattice's labels and features
       y_latt = y[(y==lbl) & (y!=self.outlier_lbl)]
       if not len(y_latt): continue
-      X_latt = X[(y==lbl & (y!=self.outlier_lbl)][:]
+      X_latt = X[(y==lbl) & (y!=self.outlier_lbl)][:]
       # find distances to this lattice's perfect features and det if below cutoff
       D = self._distance(X_latt, perf_x)
       y_latt[D > cutoff] = self.outlier_lbl
@@ -59,7 +56,8 @@ class OutlierDetector:
                'perfect_features': self.perf_xs,
                'label_to_cutoffs_dict': self.lbl_to_cutoff,
                'amorph_sim_cut': self.amorph_sim_cut,
-               'max_neigh': self.max_neigh
+               'max_neigh': self.max_neigh,
+               'alpha_cutoff': self.alpha_cutoff
               }, f)
 
   @classmethod

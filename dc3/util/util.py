@@ -2,8 +2,10 @@
 NOTE: util/constants.py imports functions from this module => do not import other
 custom modules! (this should have no custom dependencies)
 '''
+import numpy as np
 from collections import namedtuple
 from inspect import signature, Parameter
+from sklearn import metrics
 
 Lattice = namedtuple('Lattice', ['name', 'perfect_path', 'neigh_range'])
 
@@ -56,3 +58,11 @@ def stringify_args(**kwargs):
   for k,v in kwargs.items():
     arg_strs.append(f'{k}-{v}')
   return '_'.join(arg_strs)
+
+def get_optimal_cutoff(X_pos, X_neg):
+  labels = np.array([1.] * len(X_pos) + [0.] * len(X_neg))
+  X = np.append(X_pos, X_neg)
+  fpr, tpr, thresholds = metrics.roc_curve(labels, X)
+  optimal_idx = np.argmax(tpr - fpr)
+  optimal_threshold = thresholds[optimal_idx]
+  return optimal_threshold

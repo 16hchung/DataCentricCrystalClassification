@@ -47,7 +47,8 @@ def eval(metadata_path,
   X_cache_path = results_path / 'X_cache.pkl'
   y_cache_path = results_path / 'y_cache.pkl'
 
-  pipeline_kwargs = {'output_rt': output_rt}
+  pipeline_kwargs = {'output_rt': output_rt,
+                     'clf_type': C.NN_CLF_TYPE}
   if output_rt != C.DFLT_OUTPUT_RT: pipeline_kwargs['featurizer'] = None
   pipeline = DC3Pipeline(**pipeline_kwargs)
   benchmarker = Benchmarker.from_metadata_path(pipeline,
