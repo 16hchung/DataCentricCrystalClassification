@@ -15,7 +15,7 @@ from ovito.io import import_file, export_file
 
 from ..util import constants as C
 from ..util.util import n_neighs_from_lattices
-from ..util.features import Featurizer
+from ..features import Featurizer
 from ..data.synthetic import distort_perfect, make_synthetic_liq
 from ..data.file_io import recursive_in_out_file_pairs
 from .outlier_detector import OutlierDetector

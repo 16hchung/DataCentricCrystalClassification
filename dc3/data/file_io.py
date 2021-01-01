@@ -4,7 +4,7 @@ import numpy as np
 
 from ovito.io import import_file
 
-from ..util.features import Featurizer
+from ..features import Featurizer
 
 def recursive_in_out_file_pairs(input_dir, output_dir, ext='.dump'):
   input_dir = Path(input_dir)
