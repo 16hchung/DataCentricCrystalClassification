@@ -8,25 +8,20 @@ import pickle as pk
 
 from ..util import constants as C
 from ..util.util import lazy_property
-from ..data.file_io import glob_pattern_inference
+from ..data.file_io import glob_pattern_inference, expand_metadata_by_T
 
 class Benchmarker:
   def __init__(self, pipeline,
                      metadata,
-                     dump_tmplt,
                      y_pkl_path=None,
                      X_pkl_path=None):
     self.pipeline = pipeline
     self.metadata = metadata
-    self.dump_tmplt = dump_tmplt
     # TODO remove and implement feature + label caching
     #self.metadata = self.metadata[(self.metadata.T_h == 1) | (self.metadata.T_h == .2)].reset_index(drop=True)
 
     # construct glob patterns + other info for data loading
-    self.metadata['fpattern'] = self.metadata.apply(
-      lambda row: self.dump_tmplt.format(lattice=row.lattice, T_h=row.T_h),
-      axis=1
-    )
+    self.metadata = expand_metadata_by_T(metadata)
     self.metadata['y_true'] = self.metadata.lattice.apply(
       lambda latt: self.pipeline.name_to_lbl_latt[latt][0]
     )
@@ -40,7 +35,7 @@ class Benchmarker:
         self.y_preds_list = pk.load(yf)
     else:
       self.Xs_list, self.y_preds_list = zip(*[
-        glob_pattern_inference(row.fpattern, self.pipeline)
+        glob_pattern_inference(row.glob_pattern, self.pipeline)
         for row in tqdm(self.metadata.itertuples(), total=len(self.metadata))
       ])
       if y_pkl_path and X_pkl_path:
@@ -51,10 +46,8 @@ class Benchmarker:
 
   @classmethod
   def from_metadata_path(cls, pipeline, metadata_path, **kwargs):
-    with open(metadata_path) as f:
-      dump_tmplt = f.readline().strip()
-      metadata = pd.read_csv(f, index_col=0)
-    return cls(pipeline, metadata, dump_tmplt, **kwargs)
+    metadata = pd.read_csv(metadata_path)
+    return cls(pipeline, metadata, **kwargs)
 
   def global_metrics(self):
     raise NotImplementedError
@@ -65,20 +58,25 @@ class Benchmarker:
   def metrics_for_all_T(self):
     raise NotImplementedError
 
-  def save_accuracy_comparison(self, pipeline_name, save_path):
-    self._add_acc_to_metadata(pipeline_name)
-    self.metadata.to_csv(save_path)
+  def save_accuracy_comparison(self, pipeline_name,
+                                     competing_accuracies_path,
+                                     save_path):
+    metadata = self._add_acc_to_metadata(pipeline_name,
+                                         competing_accuracies_path)
+    metadata.to_csv(save_path)
 
   def plot_accuracy_comparison(self, pipeline_name,
+                                     competing_accuracies_path,
                                      save_dir,
                                      only_methods=['PTM', 'CNA'],
                                      rcParams={'font.size': 16, 
                                                'figure.autolayout': True}):
-    self._add_acc_to_metadata(pipeline_name)
+    metadata = self._add_acc_to_metadata(pipeline_name,
+                                         competing_accuracies_path)
     if only_methods == None:
-      df = self.metadata
+      df = metadata
     else:
-      df = self.metadata[only_methods + [pipeline_name, 'T_h', 'lattice']]
+      df = metadata[only_methods + [pipeline_name, 'T_h', 'lattice']]
     df = df.set_index('T_h')
 
     save_dir = Path(save_dir)
@@ -93,11 +91,13 @@ class Benchmarker:
       plt.savefig(save_dir / f'{latt.name}.png', dpi=300)
       plt.clf()
 
-  def _add_acc_to_metadata(self, pipeline_name):
-    if pipeline_name in self.metadata.columns:
-      return
+  def _add_acc_to_metadata(self, pipeline_name, competing_accuracies_path):
     def row_acc(row):
       y_pred = self.y_preds_list[row.name]
       y_true = np.array([row.y_true]*len(y_pred))
       return accuracy_score(y_true, y_pred)
-    self.metadata[pipeline_name] = self.metadata.apply(row_acc, axis=1)
+
+    competing = pd.read_csv(competing_accuracies_path)
+    if pipeline_name not in self.metadata.columns:
+      self.metadata[pipeline_name] = self.metadata.apply(row_acc, axis=1)
+    return self.metadata.join(competing, on=['name', 'T_h'])

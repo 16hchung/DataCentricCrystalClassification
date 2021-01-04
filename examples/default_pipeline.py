@@ -10,7 +10,7 @@ import fire
 
 from dc3.model.full_pipeline import DC3Pipeline
 from dc3.util import constants as C
-from dc3.util.features import Featurizer
+from dc3.features import Featurizer
 from dc3.eval.benchmarker import Benchmarker
 from dc3.data.file_io import recursive_in_out_file_pairs
 
@@ -35,6 +35,7 @@ def train(overwrite=False,
     pipeline.fit_end2end()
 
 def eval(metadata_path,
+         acc_path,
          results_path,
          output_rt=C.DFLT_OUTPUT_RT,
          pipeline_name='dc3',
@@ -55,8 +56,12 @@ def eval(metadata_path,
                                                metadata_path,
                                                X_pkl_path=X_cache_path,
                                                y_pkl_path=y_cache_path)
-  benchmarker.plot_accuracy_comparison(pipeline_name, plt_comparison_path)
-  benchmarker.save_accuracy_comparison(pipeline_name, acc_comparison_path)
+  benchmarker.plot_accuracy_comparison(pipeline_name,
+                                       acc_path,
+                                       plt_comparison_path)
+  benchmarker.save_accuracy_comparison(pipeline_name,
+                                       acc_path,
+                                       acc_comparison_path)
 
 #@profile
 def inference(input_dir, output_name):
