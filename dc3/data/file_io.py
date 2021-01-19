@@ -29,19 +29,19 @@ def expand_metadata_by_T(metadata):
     r = parse(row.fname_tmplt, Path(path).name)
     return r.named
 
-  all_names, all_lattices, all_Ts, all_globs = [], [], [], []
+  all_materials, all_lattices, all_Ts, all_globs = [], [], [], []
   for row in metadata.itertuples():
     all_files = files_from_pattern(row.glob_pattern)
     path_tmplt = str(Path(row.glob_pattern).parent / row.fname_tmplt)
     Ts = list(set([meta_from_path(dump)['T_h'] for dump in all_files]))
     globs_by_T = [path_tmplt.format(T_h=T, ts='*') for T in Ts]
 
-    all_names.extend(len(Ts) * [row.name])
+    all_materials.extend(len(Ts) * [row.material])
     all_lattices.extend(len(Ts) * [row.lattice])
     all_Ts.extend(Ts)
     all_globs.extend(globs_by_T)
 
-  return pd.DataFrame({'name': all_names,
+  return pd.DataFrame({'material': all_materials,
                        'lattice': all_lattices,
                        'T_h': all_Ts,
                        'glob_pattern': all_globs})
@@ -58,4 +58,4 @@ def glob_pattern_inference(glob_pattern, dc3_pipeline):
     X, y_pred = dc3_pipeline.predict_return_features(data_collection)
     Xs.append(X)
     y_preds.append(y_pred)
-  return np.concatenate(Xs, axis=0), np.concatenate(y_preds)
+  return [np.concatenate(Xs, axis=0), np.concatenate(y_preds)]

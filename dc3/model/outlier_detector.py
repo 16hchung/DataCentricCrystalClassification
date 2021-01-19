@@ -5,6 +5,7 @@ import numpy.linalg
 
 from ..util import constants as C
 from ..util.util import get_optimal_cutoff
+
 class OutlierDetector:
   outlier_lbl = -1
 
@@ -68,9 +69,10 @@ class OutlierDetector:
 
   @staticmethod
   def _distance(X, perf_x):
-    D = np.linalg.norm(X - perf_x, axis=-1) * \
-        cosine_distances(X, perf_x[np.newaxis, :])[:,0]
-    return D
+    return np.linalg.norm(X - perf_x, axis=-1)
+    #D = np.linalg.norm(X - perf_x, axis=-1) * \
+    #    cosine_distances(X, perf_x[np.newaxis, :])[:,0]
+    #return D
 
   @staticmethod
   def _datapoint_wise_cos_sim(X1, X2):

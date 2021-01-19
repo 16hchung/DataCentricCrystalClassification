@@ -39,7 +39,8 @@ def eval(metadata_path,
          results_path,
          output_rt=C.DFLT_OUTPUT_RT,
          pipeline_name='dc3',
-         overwrite=False):
+         overwrite=False,
+         mode='accuracy'):
   # make result paths
   results_path = Path(results_path)
   results_path.mkdir(exist_ok=True)
@@ -47,21 +48,24 @@ def eval(metadata_path,
   plt_comparison_path = results_path / 'accuracy_plots'
   X_cache_path = results_path / 'X_cache.pkl'
   y_cache_path = results_path / 'y_cache.pkl'
+  feature_viz_path = results_path / 'feature_viz'
 
   pipeline_kwargs = {'output_rt': output_rt,
                      'clf_type': C.NN_CLF_TYPE}
-  if output_rt != C.DFLT_OUTPUT_RT: pipeline_kwargs['featurizer'] = None
   pipeline = DC3Pipeline(**pipeline_kwargs)
   benchmarker = Benchmarker.from_metadata_path(pipeline,
                                                metadata_path,
                                                X_pkl_path=X_cache_path,
                                                y_pkl_path=y_cache_path)
-  benchmarker.plot_accuracy_comparison(pipeline_name,
-                                       acc_path,
-                                       plt_comparison_path)
-  benchmarker.save_accuracy_comparison(pipeline_name,
-                                       acc_path,
-                                       acc_comparison_path)
+  if mode == 'accuracy':
+    benchmarker.plot_accuracy_comparison(pipeline_name,
+                                         acc_path,
+                                         plt_comparison_path)
+    benchmarker.save_accuracy_comparison(pipeline_name,
+                                         acc_path,
+                                         acc_comparison_path)
+  elif mode == 'feature_viz':
+    benchmarker.visualize_features(feature_viz_path)
 
 #@profile
 def inference(input_dir, output_name):

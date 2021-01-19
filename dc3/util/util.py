@@ -66,3 +66,30 @@ def get_optimal_cutoff(X_pos, X_neg):
   optimal_idx = np.argmax(tpr - fpr)
   optimal_threshold = thresholds[optimal_idx]
   return optimal_threshold
+
+class TwoDArrayCombiner:
+  '''Stacks np arrays that should be transformed together, then decomposes 
+  the transformed array to be split into the correct dimensions'''
+
+  def __init__(self, *Xs): 
+    self._Xs = Xs
+    # all Xs should have same # features
+    d = None
+    for X in Xs:
+      assert len(X.shape) == 2
+      assert d is None or X.shape[1] == d
+      d = X.shape[1]
+    self._d = d
+    self._Ns = [X.shape[0] for X in Xs]
+
+  def combined(self):
+    return np.concatenate(self._Xs, axis=0)
+
+  def decompose(self, transformedXs):
+    splitXs = []
+    last_idx = 0
+    for N in self._Ns:
+      splitXs.append(transformedXs[last_idx:last_idx+N,:])
+      last_idx += N
+    assert last_idx == len(transformedXs) == sum([len(X) for X in self._Xs])
+    return splitXs

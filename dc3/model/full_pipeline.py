@@ -22,7 +22,7 @@ from .outlier_detector import OutlierDetector
 
 class DC3Pipeline:
   def __init__(self, lattices=C.DFLT_LATTICES,
-                     featurizer=Featurizer(),
+                     featurizer=None,
                      clf_type=C.DFLT_CLF_TYPE,
                      clf_params=C.DFLT_CLF_KWARGS,
                      clf_param_options=None, # if not None, do grid search
@@ -129,9 +129,10 @@ class DC3Pipeline:
     # get synthetic training data
     Xs, ys, alphas, liq_alphas = [], [], [], []
 
-    def get_X_alpha(ov_collections):
+    def get_X_alpha(ov_collections, use_tqdm=True):
+      wrapper = tqdm if use_tqdm else lambda x:x
       all_features = [self.featurizer.compute(ov_collection)
-                     for ov_collection in tqdm(ov_collections)]
+                     for ov_collection in wrapper(ov_collections)]
       X_list, alpha_list = zip(*all_features)
       X = np.concatenate(X_list, axis=0)
       alpha = np.concatenate(alpha_list)
@@ -154,7 +155,9 @@ class DC3Pipeline:
 
       liq_collection = make_synthetic_liq(latt.perfect_path,
                                           save_path=latt_dump_path)
-      _, alpha_liq = get_X_alpha([liq_collection])
+      print('computing liq...')
+      _, alpha_liq = get_X_alpha([liq_collection], use_tqdm=False)
+      print('...done')
       liq_alphas.append(alpha_liq)
     X = np.concatenate(Xs, axis=0)
     y = np.concatenate(ys, axis=0)
@@ -212,6 +215,13 @@ class DC3Pipeline:
     if self._clf_type != C.NN_CLF_TYPE: return y
     else: return np.argmax(y, axis=1)
 
+  def load_synth_feat_lbls(self, scaled=False):
+    X = np.load(self.synth_feat_path)
+    y = np.load(self.synth_lbls_path)
+    if scaled:
+      X = self.scaler.transform(X)
+    return X, y
+
   def fit(self, X, y, perf_xs, alpha, liq_alpha, overwrite=False):
     self.weights_path.mkdir(exist_ok=overwrite)
     # fit scaler to training data
@@ -238,8 +248,7 @@ class DC3Pipeline:
                         overwrite=False):
     if not overwrite and self.synth_feat_path.exists() \
                      and self.synth_lbls_path.exists():
-      X = np.load(self.synth_feat_path)
-      y = np.load(self.synth_lbls_path)
+      X, y = self.load_synth_feat_lbls()
       alpha = np.load(self.synth_alpha_path)
       liq_alpha = np.load(self.liq_alpha_path)
     else:

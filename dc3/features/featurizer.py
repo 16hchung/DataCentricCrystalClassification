@@ -1,6 +1,5 @@
 from copy import deepcopy
 from inspect import signature
-from tqdm import tqdm
 import pickle as pk
 import pandas as pd
 import numpy as np
@@ -119,9 +118,8 @@ class Featurizer: # TODO make more accessible from higher level dir
       q_lm_sqr = q_lm * np.conjugate(q_lm)
       # sum over m to get main portion of q
       k = 4*np.pi / (2*l+1)
-      q_l = np.sqrt(np.real(
-              k * np.sum(q_lm_sqr, axis=-1)
-      )) # shape: (n_atoms, max_neigh)
+      # shape: (n_atoms, max_neigh)
+      q_l = np.sqrt(np.real(k * np.sum(q_lm_sqr, axis=-1))) 
       q_ls_list.append(q_l)
     q_l_3d = np.stack(q_ls_list, axis=1) # shape: (n_atoms, l, max_neigh)
     q_l_3d = q_l_3d[:,:,C.MIN_NEIGH-1:]
@@ -190,11 +188,15 @@ class Featurizer: # TODO make more accessible from higher level dir
     n_rsf_per_mu = self.n_rsf_per_mu
     mu_step      = self.rsf_mu_step
 
-    # Use 6/8/12/16 neighbors
     # used for generating mus centered around main mus, eg if n_rsf_per_mu is 5, 
     #   want range to be -2, -1, 0, 1, 2
     mu_incr_range = range(int(n_rsf_per_mu / -2),
                           int(n_rsf_per_mu / 2) + 1)
+    # f_mus short for fracional mus
+    f_mus = np.array(mu_incr_range).reshape(1,-1) * mu_step + 1 
+    if n_rsf_per_mu == 7:
+      check = [0.85,0.90,0.95,1.0,1.05,1.10,1.15] 
+      assert [a==b for a,b in zip(f_mus[0], check)]
     # calculate mus and sigmas
     Mu_list = []
     Sigma_list = []
@@ -202,12 +204,8 @@ class Featurizer: # TODO make more accessible from higher level dir
       Mu_center = np.mean(R[:,:n_neigh], axis=-1) # appended shape: (n_atoms)
       Sigma_list.append(sigma_scale * Mu_center)
       # generate a bunch of mus centered around this one
-      center_Mu_list = []
-      for mu_incr in mu_incr_range:
-        scaled_incr = mu_incr * mu_step
-        center_Mu_list.append(Mu_center + scaled_incr * Mu_center)
       # shape: (n_atoms, n_rsf_per_mu)
-      Mu_list.append( np.stack(center_Mu_list, axis=-1) ) 
+      Mu_list.append(Mu_center[:,np.newaxis] * f_mus)
     # stack mulist and sigma list
     # shape: (n_atoms, # n_neighs,  n_rsf_per_mu)
     Mus = np.stack(Mu_list, axis=1)
