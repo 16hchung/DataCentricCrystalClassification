@@ -31,8 +31,7 @@ DFLT_LATTICES = [
   Lattice(name='sc' , perfect_path=str(PERF_DUMP_RT/'dump_sc_perfect_0.dat' ), neigh_range=[0,6 ])
 ]
 
-DFLT_DISTORT_BINS = list(np.linspace(.01, .25, num=5))
-#DFLT_DISTORT_BINS = list(np.linspace(.01, .25, num=40))
+DFLT_DISTORT_BINS = list(np.linspace(.01, .25, num=40))
 
 # Feature computation
 
