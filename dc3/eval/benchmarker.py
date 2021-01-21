@@ -118,7 +118,7 @@ class Benchmarker:
                        xlim=xlim, ylim=ylim,
                        plot_type='PCA')
     for perplexity in perplexities:
-      X_tsne = TSNE(perplexity=perplexity).fit_transform(X_PCA)
+      X_tsne = TSNE(perplexity=perplexity, verbose=2).fit_transform(X_PCA)
       X_te_tsne, X_tr_tsne, X_perf_tsne = Xcombiner.decompose(X_tsne)
       np.save(data_path / 'X_md_sample_tsne.pkl', X_te_tsne)
       np.save(data_path / 'X_synthetic_sample_tsne.pkl', X_tr_tsne)

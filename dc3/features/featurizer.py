@@ -163,15 +163,16 @@ class Featurizer: # TODO make more accessible from higher level dir
     # Sigmas shape: (n_atoms, len(n_neighs) or max_neigh)
     Mus, Sigmas, n_features = self._rsf_get_mus_sigmas(R)
     # use maximual r_cut with some buffer
-    r_cut = np.max(Mus) + 4*np.max(Sigmas)
+    r_cut = np.max(Mus, axis=0).max(axis=1) + 4*np.max(Sigmas, axis=0)
+    assert len(r_cut) == max_neigh - 1
     # retrieve distances for each
-    # shapes: (n_atoms, max neigh w/in cutoff per atom)
+    # shapes: (n_atoms, len(n_neighs), max neigh w/in cutoff per atom)
     distances = self._get_variable_neigh_distances(ov_data_collection, 
                                                    r_cut,
                                                    **kwargs)
     # NOTE: expanding dims so they can be broadcast together in norm.pdf
     # (n_atoms, len(n_neighs), n_rsf_per_mu, max neigh w/in cutoff per atom)
-    soft_counts = sp_norm.pdf(distances[:, np.newaxis, np.newaxis, :],
+    soft_counts = sp_norm.pdf(distances[:, :, np.newaxis, :],
                               loc=Mus[:, :, :, np.newaxis],
                               scale=Sigmas[:, :, np.newaxis, np.newaxis])
     # (n_atoms, len(n_neighs), n_rsf_per_mu)
@@ -201,7 +202,7 @@ class Featurizer: # TODO make more accessible from higher level dir
     Mu_list = []
     Sigma_list = []
     for n_neigh in range(C.MIN_NEIGH, max_neigh + 1):
-      Mu_center = np.mean(R[:,:n_neigh], axis=-1) # appended shape: (n_atoms)
+      Mu_center = np.mean(R[:,:n_neigh], axis=-1) # shape: (n_atoms)
       Sigma_list.append(sigma_scale * Mu_center)
       # generate a bunch of mus centered around this one
       # shape: (n_atoms, n_rsf_per_mu)
@@ -250,21 +251,29 @@ class Featurizer: # TODO make more accessible from higher level dir
     return R_cart
 
   def _get_variable_neigh_distances(self, ov_data_collection,
-                                          r_cut,
+                                          r_cuts,
                                           pad=np.inf):
-    # only choose neighbors of certain type
-    finder = CutoffNeighborFinder(cutoff=r_cut,
-                                  data_collection=ov_data_collection)
-    # retrieve neighbor distances from ovito finder (all elements may
-    # be different lengths, shape: list len = n_atoms, each el len = ?
-    distances_list = [
-        np.array( [neigh.distance for neigh in finder.find(iatom)] )
-        for iatom in range(ov_data_collection.particles.count)
-    ]
-    max_len = max([len(l) for l in distances_list])
+    distances_list = []
+    for r_cut in r_cuts:
+      # only choose neighbors of certain type
+      finder = CutoffNeighborFinder(cutoff=r_cut,
+                                    data_collection=ov_data_collection)
+      # retrieve neighbor distances from ovito finder (all elements may
+      # be different lengths, shape: list len = n_atoms, each el len = ?
+      distances = [
+          np.array( [neigh.distance for neigh in finder.find(iatom)] )
+          for iatom in range(ov_data_collection.particles.count)
+      ]
+      distances_list.append(distances)
+    # permute shape from [n_neigh, n_atoms, ?] to [n_atoms, n_neigh, ?]
+    distances_list = list(zip(*distances_list))
+    max_len = max([len(l) for ll in distances_list
+                          for l in ll])
     padded_list = [
-        np.pad(l, (0, max_len - len(l)), mode='constant', constant_values=pad)
-        for l in distances_list
+        [  np.pad(l, (0, max_len - len(l)), mode='constant', constant_values=pad)
+           for l in ll  ]
+        for ll in distances_list
     ]
-    distances = np.stack(padded_list, axis=0) # shape: (n_atoms, max_len)
+    distances = np.stack(padded_list, axis=0)
+    # shape: (n_atoms, n_neigh, max_len)
     return distances
