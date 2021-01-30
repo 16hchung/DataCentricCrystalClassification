@@ -163,7 +163,8 @@ class Featurizer: # TODO make more accessible from higher level dir
     # Sigmas shape: (n_atoms, len(n_neighs) or max_neigh)
     Mus, Sigmas, n_features = self._rsf_get_mus_sigmas(R)
     # use maximual r_cut with some buffer
-    r_cut = np.max(Mus, axis=0).max(axis=1) + 4*np.max(Sigmas, axis=0)
+    middleMus = Mus[:,:,n_rsf_per_mu//2]
+    r_cut = np.max(middleMus, axis=0) + 4*np.max(Sigmas, axis=0)
     assert len(r_cut) == max_neigh - 1
     # retrieve distances for each
     # shapes: (n_atoms, len(n_neighs), max neigh w/in cutoff per atom)
@@ -172,12 +173,11 @@ class Featurizer: # TODO make more accessible from higher level dir
                                                    **kwargs)
     # NOTE: expanding dims so they can be broadcast together in norm.pdf
     # (n_atoms, len(n_neighs), n_rsf_per_mu, max neigh w/in cutoff per atom)
-    soft_counts = sp_norm.pdf(distances[:, :, np.newaxis, :],
-                              loc=Mus[:, :, :, np.newaxis],
-                              scale=Sigmas[:, :, np.newaxis, np.newaxis])
+    soft_counts = self._computeG(distances[:,:,np.newaxis,:],
+                                 Mus[:,:,:,np.newaxis],
+                                 Sigmas[:,:,np.newaxis,np.newaxis])
     # (n_atoms, len(n_neighs), n_rsf_per_mu)
     G_stacked = np.sum(soft_counts, axis=-1)
-    G_stacked = np.sqrt(2*np.pi*np.square(Sigmas[:,:,np.newaxis])) * G_stacked
     G = np.reshape(G_stacked, (n_atoms, n_features), order='C')
     return G
 
@@ -277,3 +277,7 @@ class Featurizer: # TODO make more accessible from higher level dir
     distances = np.stack(padded_list, axis=0)
     # shape: (n_atoms, n_neigh, max_len)
     return distances
+
+  @staticmethod
+  def _computeG(x, mu, sigma):
+    return np.exp(-(x-mu)**2/(2*sigma**2))
