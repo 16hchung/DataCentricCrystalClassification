@@ -3,6 +3,7 @@ from sklearn.neural_network import MLPClassifier
 from pathlib import Path
 from collections import namedtuple
 import numpy as np
+import matplotlib.pyplot as plt
 
 from .util import Lattice, range_list_max, n_neighs_from_lattices
 
@@ -66,9 +67,12 @@ DFLT_CLF_KWARGS = {'C': 10,
 GS_SCORING = 'f1_weighted'
 GS_NJOBS = -1
 GS_VERBOSITY = 2
+LC_XAXIS = 'validation_fraction'
+LC_YAXES = ['mean_train_score', 'mean_test_score']
+MOD_SIZE_XAXIS = 'hidden_layer_sizes'
+LR_XAXIS = 'learning_rate_init'
 
-DFLT_OUTLIER_PCUT = 95
-DFLT_AMORPH_SIM_CUT = .5
+DFLT_OUTLIER_PCUT = 99
 DFLT_MAX_NEIGH = 16
 
 COH_L_LIST = [4,6,8,12]
@@ -76,3 +80,9 @@ COH_L_LIST = [4,6,8,12]
 ### PLOTTING
 
 MARKERS = ['o', 's', '^', 'D', 'v', 'P']
+RCPARAMS = {'font.size': 18, 'figure.autolayout': True}
+DFLT_CM = plt.get_cmap('viridis')
+
+DFLT_FEATURE_VIZ_N = 10000
+
+TSNE_PERPLEX = [10, 50, 100, 200, 500, 1000]

@@ -4,8 +4,12 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV
 from sklearn.utils import shuffle
 from pathlib import Path
+from itertools import product
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import pickle as pk
+import traceback
 import warnings
 import joblib
 import gc
@@ -85,7 +89,7 @@ class DC3Pipeline:
       self.is_trained = False
     self._save_clf_hparams()
     self._clf_type = clf_type
-    self._clf_params = clf_params
+    self._clf_params = clf_params #TODO is this deprecated?
     self._clf_param_options = clf_param_options
 
   def _save_clf_hparams(self):
@@ -217,13 +221,18 @@ class DC3Pipeline:
 
   def load_synth_feat_lbls(self, scaled=False):
     X = np.load(self.synth_feat_path)
+    a = np.load(self.synth_alpha_path)
     y = np.load(self.synth_lbls_path)
     if scaled:
       X = self.scaler.transform(X)
-    return X, y
+    return X, a, y
+
+  def load_synth_liq_alphas(self):
+    liq_alpha = np.load(self.liq_alpha_path)
+    return liq_alpha
 
   def fit(self, X, y, perf_xs, alpha, liq_alpha, overwrite=False):
-    self.weights_path.mkdir(exist_ok=overwrite)
+    self.weights_path.mkdir(exist_ok=True)
     # fit scaler to training data
     self.scaler.fit(X)
     joblib.dump(self.scaler, self.scaler_path)
@@ -232,11 +241,15 @@ class DC3Pipeline:
     X, y = shuffle(X, y)
     y_clf = self._format_to_clf_lbls(y)
     X_train, y_train = X[:50000,:], y_clf[:50000,...]
-    ran_gs = self._gs_clf(X_train, y_train, overwrite)
-    if not ran_gs:
-      self.classifier.fit(X_train, y_train)
-    joblib.dump(self.classifier, self.classifier_path)
-    # TODO add hparam grid searching
+    if not overwrite and self.classifier_path.exists():
+      warnings.warn('using cached clf and not performing grid search')
+      self.classifier = joblib.load(self.classifier_path)
+    else:
+      # hparam grid searching
+      ran_gs = self._gs_clf(X_train, y_train, overwrite)
+      if not ran_gs:
+        self.classifier.fit(X_train, y_train)
+      joblib.dump(self.classifier, self.classifier_path)
     # train outlier detector
     perf_xs = [np.array(x) for x in self.scaler.transform(perf_xs).tolist()]
     self.outlier_detector.fit(X, y, perf_xs, alpha, liq_alpha)
@@ -248,9 +261,8 @@ class DC3Pipeline:
                         overwrite=False):
     if not overwrite and self.synth_feat_path.exists() \
                      and self.synth_lbls_path.exists():
-      X, y = self.load_synth_feat_lbls()
-      alpha = np.load(self.synth_alpha_path)
-      liq_alpha = np.load(self.liq_alpha_path)
+      X, alpha, y = self.load_synth_feat_lbls()
+      liq_alpha = self.load_synth_liq_alphas()
     else:
       X, y, alpha, liq_alpha = self.compute_synth_features(distort_bins=distort_bins)
     if not overwrite and self.perf_feat_path.exists():
@@ -264,17 +276,30 @@ class DC3Pipeline:
       self.fit(X, y, perf_xs, alpha, liq_alpha)
     return self
 
+  @property
+  def training_N(self):
+    if self.synth_feat_path.exists() and self.synth_lbls_path.exists():
+      _,_,y = self.load_synth_feat_lbls()
+      return len(y)
+    else:
+      return None
+
   def predict(self, ov_data_collection):
-    return self.predict_return_features(ov_data_collection)[1]
+    return self.predict_return_features(ov_data_collection)[-1]
 
   def predict_return_features(self, ov_data_collection):
     assert self.is_trained
     X, alpha = self.featurizer.compute(ov_data_collection)
+    y = self.predict_from_features(X, alpha)
+    return X, alpha, y
+
+  def predict_from_features(self, X, alpha):
+    assert self.is_trained
     X = self.scaler.transform(X)
     y_cand = self.classifier.predict(X)
     y_cand = self._format_from_clf_lbls(y_cand)
-    y = self.outlier_detector.predict(X, alpha, y_cand, ov_data_collection)
-    return X, y
+    y = self.outlier_detector.predict(X, alpha, y_cand)
+    return y
 
   def predict_recursive_dir(self, input_dir, output_name, ext='.gz'):
     output_dir = self.inference_rt / output_name

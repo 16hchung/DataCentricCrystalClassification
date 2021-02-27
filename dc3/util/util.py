@@ -62,10 +62,24 @@ def stringify_args(**kwargs):
 def get_optimal_cutoff(X_pos, X_neg):
   labels = np.array([1.] * len(X_pos) + [0.] * len(X_neg))
   X = np.append(X_pos, X_neg)
-  fpr, tpr, thresholds = metrics.roc_curve(labels, X)
-  optimal_idx = np.argmax(tpr - fpr)
-  optimal_threshold = thresholds[optimal_idx]
+  prec, rec, threshold = metrics.precision_recall_curve(labels, X)
+  f1_values = 2 * (prec * rec) / (prec + rec)
+  argmax_f1 = np.nanargmax(f1_values)
+  max_f1 = np.nanmax(f1_values)
+  optimal_threshold = threshold[argmax_f1]
   return optimal_threshold
+
+def bootstrap(y, y_true, M=200):
+  acc_avg = np.sum(y==y_true)/len(y)
+  acc = np.zeros(M)
+  for m in range(M):
+    new_y = np.random.choice(y,len(y))
+    acc[m] = np.sum(new_y==y_true)/len(y)
+  # Find 95% confidence interval.
+  acc = np.sort(acc)
+  low = acc[int(0.025*M)]
+  high = acc[int(0.975*M)]
+  return acc_avg, low, high
 
 class TwoDArrayCombiner:
   '''Stacks np arrays that should be transformed together, then decomposes 

@@ -50,12 +50,16 @@ def glob_pattern_inference(glob_pattern, dc3_pipeline):
   files = files_from_pattern(glob_pattern)
   ov_pipeline = import_file(files)
   Xs = []
+  alphas = []
   y_preds = []
   pbar = tqdm(range(ov_pipeline.source.num_frames))
   for frame in pbar:
     pbar.set_description(f'computing features for files {glob_pattern})')
     data_collection = ov_pipeline.compute(frame)
-    X, y_pred = dc3_pipeline.predict_return_features(data_collection)
+    X, alpha, y_pred = dc3_pipeline.predict_return_features(data_collection)
     Xs.append(X)
+    alphas.append(alpha)
     y_preds.append(y_pred)
-  return [np.concatenate(Xs, axis=0), np.concatenate(y_preds)]
+  return [np.concatenate(Xs, axis=0), 
+          np.concatenate(alphas), 
+          np.concatenate(y_preds)]
